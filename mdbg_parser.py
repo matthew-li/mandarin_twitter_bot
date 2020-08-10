@@ -59,7 +59,7 @@ class MDBGParser(object):
             raise MDBGError(
                 f"Invalid response status code: {response.status_code}.")
         return response.content
-        
+
 
     def run(self):
         """Searches the dictionary for the characters, storing its definitions.

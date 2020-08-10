@@ -1,17 +1,27 @@
 from aws_client import AWSClientError
 from aws_client import get_tweets_on_date
+from collections import namedtuple
 from constants import AWSResource
 from constants import DynamoDBTable
+from constants import TWEET_MAX_CHARS
+from constants import TWEET_URL_LENGTH
 from constants import TWEETS_PER_DAY
 from datetime import datetime
 from datetime import timedelta
+from http import HTTPStatus
 from mdbg_parser import MDBGParser
+from settings import DATE_FORMAT
 from settings import TWITTER_USER_USERNAME
 from twitter_api_client import TwitterAPIClient
 import boto3
 
+""""""
+
 
 def main():
+    """
+
+    """
     # Exit if the designated number of Tweets have already been posted today.
     today = datetime.today()
     tweets_today = get_tweets_on_date(today)
@@ -40,20 +50,43 @@ def main():
     print(f"Pinyin: {mdbg_parser.pinyin}")
     print(f"Definitions: {mdbg_parser.definitions}")
 
+    # Retrieve previous Tweets.
     last_week = get_previous_tweet_details(
         today - timedelta(days=7), date_index=date_index)
     last_month = get_previous_tweet_details(
         today - timedelta(days=30), date_index=date_index)
-    # Pick a random number of days, in range, to go back.
-    days = 0
-    random = get_previous_tweet_details(
+    days = 0                                                                   # Pick a random number of days, in range, to go back. What's the sort key?
+    random = get_previous_tweet_details(                                       # Avoid hitting DB once initial value has been retrieved.
         today - timedelta(days=days), date_index=date_index)
-    body = format_tweet_body(mdbg_parser, last_week, last_month, random)
 
+    # Construct the body of the Tweet.
+    body = generate_tweet_body(mdbg_parser, last_week, last_month, random)
+
+    # Post the Tweet.
     twitter_client = TwitterAPIClient()
-    twitter_client.post_tweet(body)
+    post_response = twitter_client.post_tweet(body)
+
+    # Check the response.
+    if response.status_code != HTTPStatus.OK:
+        return
+
+    json = post_response.json()
+    tweet_id_str = json["id_str"]
+    created_at = json["created_at"]                                            # "Wed Oct 10 20:19:24 +0000 2018"
+    creation_timestamp = 0
 
     # Create an entry in the Tweets table.
+    table = dynamodb.Table(DynamoDBTable.TWEETS)
+    response = table.put_item(
+        Item={
+            "TweetId": tweet_id_str,
+            "Date": today.strftime(DATE_FORMAT),
+            "DateIndex": date_index,
+            "Word": mdbg_parser.simplified,
+            "CreationTimestamp": creation_timestamp,
+        })
+
+    # Check the response.
 
 
 def get_previous_tweet_details(dt, date_index=None):
@@ -61,14 +94,16 @@ def get_previous_tweet_details(dt, date_index=None):
     try:
         tweets = get_tweets_on_date(dt, tweet_idx=date_index)
     except AWSClientError as e:
-        # Maybe just don't post for this one.
-        return
+        return dict()
     if tweets["Count"] == 0:
         tweet = None
     elif tweets["Count"] > 1:
         tweet = None
     else:
         tweet = tweets["Items"][0]
+
+    if not tweet:
+        return dict()
 
     word = tweet["Word"]
     tweet_id = tweet["TweetId"]
@@ -81,24 +116,92 @@ def get_previous_tweet_details(dt, date_index=None):
     return dict(tweet_id=tweet_id, word=word, url=url)
 
 
-def format_tweet_body(mdbg_parser, last_week, last_month, random):
-    content = (
-        f"{mdbg_parser.simplified} ({mdbg_parser.pinyin}): "
-        f"{', '.join(mdbg_parser.definitions)}"
+def generate_tweet_body(mdbg_parser, last_week={}, last_month={}, random={}):
+    """
+
+    """
+    TweetEntry = namedtuple("TweetEntry", "entry char_count")
+    tweet_entries = dict()
+
+    # Compute the previous entries.
+    remaining_chars = TWEET_MAX_CHARS
+    previous_tweets = (
+        ("Last Week", last_week),
+        ("Last Month", last_month),
+        ("Random", random),
     )
-    if last_week is not None:
-        content = content + "\n" + "Last Week: {}"
-    if last_month is not None:
-        content = content + "\n" + "Last Month: {}"
-    if random is not None:
-        content = content + "\n" + "Random: {}"
+    for label, tweet in previous_tweets:
+        if not tweet:
+            continue
+        if "word" not in tweet or "url" not in tweet:
+            continue
+        entry = f"\n{label}: {tweet['word']} ({tweet['url']})"
+        char_count = (len(entry) +
+                      len(tweet["word"]) -
+                      len(tweet["url"]) +
+                      TWEET_URL_LENGTH)
 
-    # Validate that the tweet length does not exceed 280.
-    # Each Chinese character counts as two characters.
-    # Definitions may need to be truncated.
+        if remaining_chars - char_count <= 0:
+            continue
+        remaining_chars = remaining_chars - char_count
+        tweet_entries[label] = TweetEntry(entry=entry, char_count=char_count)
 
-    return content
+    # Compute the current entry.
+    entry = f"{mdbg_parser.simplified} ({mdbg_parser.pinyin}): "
+    char_count = len(entry) + len(mdbg_parser.simplified)
+    filtered_definitions = []
+    for _, definition in enumerate(mdbg_parser.definitions):
+        updated_count = char_count + len("; ".join(filtered_definitions))
+        if filtered_definitions:
+            # Account for prepending "; ".
+            updated_count = updated_count + 2
+        if remaining_chars - (updated_count + len(definition)) < 0:
+            continue
+        filtered_definitions.append(definition)
+    if filtered_definitions:
+        addition = "; ".join(filtered_definitions)
+    else:
+        addition = "Not available"
+    entry = entry + addition
+    char_count = char_count + len(addition)
+    entry = entry + "\n"
+    char_count = char_count + 1
+    tweet_entries["Now"] = TweetEntry(entry=entry, char_count=char_count)
+    remaining_chars = remaining_chars - char_count
+
+    # Remove previous entries if the character count has been exceeded.
+    for label in ("Random", "Last Month", "Last Week"):
+        if remaining_chars >= 0:
+            break
+        try:
+            tweet_entry = tweet_entries.pop(label)
+        except KeyError:
+            continue
+        remaining_chars = remaining_chars - tweet_entry.char_count
+
+    # Construct the Tweet.
+    body = tweet_entries["Now"].entry
+    for label in ("Last Week", "Last Month", "Random"):
+        if label in tweet_entries:
+            body = body + tweet_entries[label].entry
+    return body
 
 
 if __name__ == "__main__":
-    main()
+    mdbg_parser = MDBGParser("停车场", pinyin="tíngchēchǎng")
+    mdbg_parser.definitions = ["parking lot", "car park"]
+    last_week = {
+        "word": "编制",
+        "url": "https://twitter.com/Twitter/status/1273313100570284040",
+    }
+    last_month = {
+        "word": "共和国",
+        "url": "https://twitter.com/Twitter/status/1273313100570284040",
+    }
+    random = {
+        "word": "上班族",
+        "url": "https://twitter.com/Twitter/status/1273313100570284040",
+    }
+    x = generate_tweet_body(
+        mdbg_parser, last_week=last_week, last_month=last_month, random=random)
+    print(x)

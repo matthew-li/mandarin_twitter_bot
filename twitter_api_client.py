@@ -32,7 +32,7 @@ class TwitterAPIClient(object):
             None
         """
         # Generate the parameter string.
-        parameters = parameters.copy()
+        param:wq:eters = parameters.copy()
         parameters.update({
             "oauth_consumer_key": settings.TWITTER_CONSUMER_KEY,
             "oauth_nonce": generate_nonce(32),
@@ -68,7 +68,8 @@ class TwitterAPIClient(object):
         return header[:-2]
 
     def post_tweet(self):
-        pass
+        response = ""
+        return response
 
     def tweet_exists(self, tweet_id):
         """Returns whether or not a Tweet with the given ID exists.

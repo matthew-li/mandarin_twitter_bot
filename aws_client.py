@@ -14,18 +14,21 @@ class AWSClientError(Exception):
 
 
 class DynamoDBSchema(object):
+    """DynamoDB tables and their expected formats."""
 
     tweets = {
-        "TweetId": int,
+        "TweetId": str,
         "Date": str,
         "DateIndex": int,
         "Word": str,
+        "CreationTimestamp": int,
     }
 
     unprocessed_words = {
         "WordId": str,
         "Characters": str,
         "Pinyin": str,
+        "InsertionTimestamp": int,
     }
 
 
@@ -77,6 +80,30 @@ def get_tweets_on_date(dt, date_index=None):
     return response
 
 
-def validate_document(document):
-    """"""
-    pass
+def validate_item_against_schema(schema, item):
+    """Return whether or not the given item has the same format as the
+    given schema.
+
+    Args:
+        schema: A dictionary mapping field name to expected value type.
+        item: A dictionary mapping field name to value.
+
+    Returns:
+        A boolean representing whether or not the item matches the
+        schema.
+
+    Raises:
+        TypeError: If either argument is not a dictionary.
+    """
+    if not isinstance(schema, dict):
+        raise TypeError("Schema is not a dictionary.")
+    if not isinstance(item, dict):
+        raise TypeError("Item is not a dictionary.")
+    if len(schema) != len(item):
+        return False
+    for key, value_type in schema.items():
+        if key not in item:
+            return False
+        if not isinstance(item[key], value_type):
+            return False
+    return True
