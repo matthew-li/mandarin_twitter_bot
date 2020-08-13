@@ -1,4 +1,5 @@
 from aws_client import AWSClientError
+from aws_client import get_random_previous_tweet
 from aws_client import get_tweets_on_date
 from collections import namedtuple
 from constants import AWSResource
@@ -14,6 +15,7 @@ from settings import DATE_FORMAT
 from settings import TWITTER_USER_USERNAME
 from twitter_api_client import TwitterAPIClient
 import boto3
+import uuid
 
 """"""
 
@@ -28,7 +30,7 @@ def main():
     if tweets_today["Count"] >= TWEETS_PER_DAY:
         return
 
-    date_index = tweets_today["Count"]
+    date_entry = tweets_today["Count"]
 
     # Retrieve the next unprocessed word.
     dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
@@ -52,12 +54,10 @@ def main():
 
     # Retrieve previous Tweets.
     last_week = get_previous_tweet_details(
-        today - timedelta(days=7), date_index=date_index)
+        today - timedelta(days=7), date_entry=date_entry)
     last_month = get_previous_tweet_details(
-        today - timedelta(days=30), date_index=date_index)
-    days = 0                                                                   # Pick a random number of days, in range, to go back. What's the sort key?
-    random = get_previous_tweet_details(                                       # Avoid hitting DB once initial value has been retrieved.
-        today - timedelta(days=days), date_index=date_index)
+        today - timedelta(days=30), date_entry=date_entry)
+    random = get_random_previous_tweet()
 
     # Construct the body of the Tweet.
     body = generate_tweet_body(mdbg_parser, last_week, last_month, random)
@@ -79,9 +79,10 @@ def main():
     table = dynamodb.Table(DynamoDBTable.TWEETS)
     response = table.put_item(
         Item={
+            "Id": str(uuid.uuid4()),
             "TweetId": tweet_id_str,
             "Date": today.strftime(DATE_FORMAT),
-            "DateIndex": date_index,
+            "DateEntry": date_entry,
             "Word": mdbg_parser.simplified,
             "CreationTimestamp": creation_timestamp,
         })
@@ -89,10 +90,10 @@ def main():
     # Check the response.
 
 
-def get_previous_tweet_details(dt, date_index=None):
+def get_previous_tweet_details(dt, date_entry=None):
     """"""
     try:
-        tweets = get_tweets_on_date(dt, tweet_idx=date_index)
+        tweets = get_tweets_on_date(dt, date_entry=date_entry)
     except AWSClientError as e:
         return dict()
     if tweets["Count"] == 0:
@@ -117,8 +118,24 @@ def get_previous_tweet_details(dt, date_index=None):
 
 
 def generate_tweet_body(mdbg_parser, last_week={}, last_month={}, random={}):
-    """
+    """Return the formatted body of a new Tweet, given the current
+    and previous entries.
 
+    Args:
+        mdbg_parser: An instance of MDBGParser, which contains the
+                     current word, pinyin, and definitions.
+        last_week: A dictionary representing the Tweet from seven days
+                   ago, with "word" and "url" keys.
+        last_month: A dictionary representing the Tweet from thirty days
+                    ago, with "word" and "url" keys.
+        random: A dictionary representing the Tweet from a random number
+                of days ago, with "word" and "url" keys.
+
+    Returns:
+        A string representing the body of the new Tweet.
+
+    Raises:
+        Exception.
     """
     TweetEntry = namedtuple("TweetEntry", "entry char_count")
     tweet_entries = dict()
@@ -188,20 +205,4 @@ def generate_tweet_body(mdbg_parser, last_week={}, last_month={}, random={}):
 
 
 if __name__ == "__main__":
-    mdbg_parser = MDBGParser("停车场", pinyin="tíngchēchǎng")
-    mdbg_parser.definitions = ["parking lot", "car park"]
-    last_week = {
-        "word": "编制",
-        "url": "https://twitter.com/Twitter/status/1273313100570284040",
-    }
-    last_month = {
-        "word": "共和国",
-        "url": "https://twitter.com/Twitter/status/1273313100570284040",
-    }
-    random = {
-        "word": "上班族",
-        "url": "https://twitter.com/Twitter/status/1273313100570284040",
-    }
-    x = generate_tweet_body(
-        mdbg_parser, last_week=last_week, last_month=last_month, random=random)
-    print(x)
+    pass
