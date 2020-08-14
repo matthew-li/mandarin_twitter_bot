@@ -1,6 +1,7 @@
 from aws_client import AWSClientError
 from aws_client import get_random_previous_tweet
 from aws_client import get_tweets_on_date
+from aws_client import put_tweet
 from collections import namedtuple
 from constants import AWSResource
 from constants import DynamoDBTable
@@ -72,22 +73,20 @@ def main():
 
     json = post_response.json()
     tweet_id_str = json["id_str"]
-    created_at = json["created_at"]                                            # "Wed Oct 10 20:19:24 +0000 2018"
-    creation_timestamp = 0
 
     # Create an entry in the Tweets table.
-    table = dynamodb.Table(DynamoDBTable.TWEETS)
-    response = table.put_item(
-        Item={
-            "Id": str(uuid.uuid4()),
-            "TweetId": tweet_id_str,
-            "Date": today.strftime(DATE_FORMAT),
-            "DateEntry": date_entry,
-            "Word": mdbg_parser.simplified,
-            "CreationTimestamp": creation_timestamp,
-        })
+    tweet = {
+        "Id": str(uuid.uuid4()),
+        "TweetId": tweet_id_str,
+        "Date": today.strftime(DATE_FORMAT),
+        "DateEntry": date_entry,
+        "Word": mdbg_parser.simplified,
+    }
+    response = put_tweet(tweet)
 
     # Check the response.
+    # if response.status_code != HTTPStatus.OK:
+    #     raise Exception()
 
 
 def get_previous_tweet_details(dt, date_entry=None):

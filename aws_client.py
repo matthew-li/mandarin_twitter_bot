@@ -71,7 +71,7 @@ def get_random_previous_tweet():
 
 def get_tweets_on_date(dt, date_entry=None):
     """Return the Tweets tweeted on the date represented by the given
-    datetime object. Optionally also filters on what number entry the
+    datetime object. Optionally also filter on what number entry the
     tweet was on its date.
 
     Args:
@@ -116,6 +116,39 @@ def get_tweets_on_date(dt, date_entry=None):
     return response
 
 
+def put_tweet(tweet):
+    """Store the Tweet represented by the given dictionary after
+    validating that it conforms to the expected schema. Return the
+    response.
+
+    Args:
+        tweet: a dict object representing a Tweet, which must conform to
+               the expected schema.
+
+    Returns:
+        A dictionary response from AWS including an "Attributes" key.
+
+    Raises:
+        AWSClientError: If the AWS put fails.
+        TypeError: If one or more inputs has an unexpected type.
+        ValueError: If the Tweet does not conform to the expected
+                    schema.
+    """
+    if not isinstance(tweet, dict):
+        raise TypeError(f"Tweet {tweet} is not a dict object.")
+    schema = DynamoDBSchema.tweets
+    if not validate_item_against_schema(schema, tweet):
+        raise ValueError(f"Tweet {tweet} does not conform to the schema.")
+    try:
+        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        table = dynamodb.Table(DynamoDBTable.TWEETS)
+        response = table.put_item(Item=tweet)
+    except botocore.exceptions.ClientError as e:
+        raise AWSClientError(
+            f"Failed to retrieve response from AWS. Details: {e}")
+    return response
+
+
 def validate_item_against_schema(schema, item):
     """Return whether or not the given item has the same format as the
     given schema.
@@ -132,9 +165,9 @@ def validate_item_against_schema(schema, item):
         TypeError: If either argument is not a dictionary.
     """
     if not isinstance(schema, dict):
-        raise TypeError("Schema is not a dictionary.")
+        raise TypeError("Schema is not a dict object.")
     if not isinstance(item, dict):
-        raise TypeError("Item is not a dictionary.")
+        raise TypeError("Item is not a dict object.")
     if len(schema) != len(item):
         return False
     for key, value_type in schema.items():
