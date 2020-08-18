@@ -35,6 +35,49 @@ class DynamoDBSchema(object):
     }
 
 
+def batch_put_unprocessed_words(unprocessed_words):
+    """Store the unprocessed words represented by the given list of
+    dictionaries in a batch write after validating that each conforms to
+    the expected schema. Return the response.
+
+    Args:
+        unprocessed_words: a list of dict objects representing
+                           UnprocessedWords, each of which must conform
+                           to the expected schema.
+
+    Returns:
+        A dictionary response with key "success" mapping to True.
+
+    Raises:
+        AWSClientError: If the AWS put fails.
+        TypeError: If one or more inputs has an unexpected type.
+        ValueError: If any UnprocessedWord does not conform to the
+                    expected schema.
+    """
+    if not isinstance(unprocessed_words, list):
+        raise TypeError(
+            f"UnprocessedWords {unprocessed_words} is not a list object.")
+    schema = DynamoDBSchema.unprocessed_words
+    for unprocessed_word in unprocessed_words:
+        if not isinstance(unprocessed_word, dict):
+            raise TypeError(
+                f"UnprocessedWord {unprocessed_word} is not a dict object.")
+        if not validate_item_against_schema(schema, unprocessed_word):
+            raise ValueError(
+                f"UnprocessedWord {unprocessed_word} does not conform to the "
+                f"schema.")
+    try:
+        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        table = dynamodb.Table(DynamoDBTable.UNPROCESSED_WORDS)
+        with table.batch_writer() as batch:
+            for unprocessed_word in unprocessed_words:
+                batch.put_item(Item=unprocessed_word)
+    except boto3.exceptions.ClientError as e:
+        raise AWSClientError(
+            f"Failed to retrieve response from AWS. Details: {e}")
+    return dict(success=True)
+
+
 def get_random_previous_tweet():
     """Return a random previously-tweeted Tweet.
 

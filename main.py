@@ -90,7 +90,21 @@ def main():
 
 
 def get_previous_tweet_details(dt, date_entry=None):
-    """"""
+    """Return a dictionary containing details about the date_entry-th
+    tweet on the given date.
+
+    Args:
+        dt: A datetime object
+        date_entry: An integer representing what number entry the tweet
+                    was on its date.
+
+    Returns:
+        A dictionary containing the tweet's Twitter ID, the word
+        associated with the tweet, and the URL to the tweet.
+
+    Raises:
+        None.
+    """
     try:
         tweets = get_tweets_on_date(dt, date_entry=date_entry)
     except AWSClientError as e:
