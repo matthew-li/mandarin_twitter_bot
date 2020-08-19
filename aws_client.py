@@ -4,6 +4,7 @@ from constants import AWSResource
 from constants import DynamoDBTable
 from constants import TWEETS_PER_DAY
 from datetime import datetime
+from decimal import Decimal
 from settings import DATE_FORMAT
 import boto3
 import botocore
@@ -24,21 +25,20 @@ class DynamoDBSchema(object):
         "Date": str,
         "DateEntry": int,
         "Word": str,
-        "CreationTimestamp": int,
     }
 
     unprocessed_words = {
         "Id": str,
         "Characters": str,
         "Pinyin": str,
-        "InsertionTimestamp": int,
+        "InsertionTimestamp": Decimal,
     }
 
 
 def batch_put_unprocessed_words(unprocessed_words):
     """Store the unprocessed words represented by the given list of
     dictionaries in a batch write after validating that each conforms to
-    the expected schema. Return the response.
+    the expected schema.
 
     Args:
         unprocessed_words: a list of dict objects representing
@@ -46,7 +46,7 @@ def batch_put_unprocessed_words(unprocessed_words):
                            to the expected schema.
 
     Returns:
-        A dictionary response with key "success" mapping to True.
+        None.
 
     Raises:
         AWSClientError: If the AWS put fails.
@@ -75,7 +75,6 @@ def batch_put_unprocessed_words(unprocessed_words):
     except boto3.exceptions.ClientError as e:
         raise AWSClientError(
             f"Failed to retrieve response from AWS. Details: {e}")
-    return dict(success=True)
 
 
 def get_random_previous_tweet():
