@@ -2,8 +2,7 @@ from collections import OrderedDict
 import argparse
 import os
 
-"""
-This script cleans and removes duplicate entries in the files in the
+"""This script cleans and removes duplicate entries in the files in the
 given directory, writing cleaned entries to an output file in the given
 directory.
 """
@@ -16,11 +15,14 @@ parser = argparse.ArgumentParser(
         "Clean the files in the given input directory and write them "
         "to a single file in the given output directory."))
 parser.add_argument(
-    "input_dir", help="The input directory containing raw files.")
+    "input_dir", help=(
+        "The input directory containing raw files. Each line in each "
+        "file should be of the form: 'word, pinyin'."))
 parser.add_argument(
     "output_dir", help=(
         "The output directory to which a file named words.txt will be "
-        "written."))
+        "written. Each line in the file will be of the form: 'word, "
+        "pinyin'."))
 
 
 def main():
