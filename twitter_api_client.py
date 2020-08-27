@@ -32,7 +32,7 @@ class TwitterAPIClient(object):
             None
         """
         # Generate the parameter string.
-        param:wq:eters = parameters.copy()
+        parameters = parameters.copy()
         parameters.update({
             "oauth_consumer_key": settings.TWITTER_CONSUMER_KEY,
             "oauth_nonce": generate_nonce(32),
@@ -67,9 +67,30 @@ class TwitterAPIClient(object):
             header = f"{header}{key}=\"{value}\", "
         return header[:-2]
 
-    def post_tweet(self):
-        response = ""
-        return response
+    def post_tweet(self, content):
+        """Creates a Tweet on Twitter with the given content.
+
+        Args:
+            content: A string containing the text of the Tweet.
+
+        Returns:
+            The JSON response from the Twitter API.
+
+        Raises:
+            TwitterAPIError: If the Twitter API fails to return a
+                             response.
+        """
+        url = os.path.join(self.BASE_URL, "statuses/update.json")
+        parameters = {"status": content}
+        header = self._get_authorization_header(url, "POST", parameters)
+        try:
+            response = requests.get(
+                url, params=parameters, headers={"Authorization": header})
+        except requests.exceptions.RequestException as e:
+            raise TwitterAPIError(
+                f"Failed to create Tweet with content {content}. Details: {e}")
+        json = response.json()
+        return json
 
     def tweet_exists(self, tweet_id):
         """Returns whether or not a Tweet with the given ID exists.

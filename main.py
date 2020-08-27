@@ -85,8 +85,8 @@ def main():
     response = put_tweet(tweet)
 
     # Check the response.
-    # if response.status_code != HTTPStatus.OK:
-    #     raise Exception()
+    if response.status_code != HTTPStatus.OK:
+        raise Exception(f"Failed to save Tweet {tweet}.")
 
 
 def get_previous_tweet_details(dt, date_entry=None):
