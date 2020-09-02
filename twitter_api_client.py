@@ -1,4 +1,6 @@
 from hashlib import sha1
+from http import HTTPStatus
+from requests_oauthlib import OAuth1Session
 from utils import generate_nonce, percent_encode
 import base64
 import hmac
@@ -12,61 +14,6 @@ class TwitterAPIClient(object):
 
     BASE_URL = "https://api.twitter.com/1.1"
 
-    @staticmethod
-    def _get_authorization_header(url, method, parameters):
-        """Returns the Authorization header string needed to authorize
-        a request of the given method type with the given URL and
-        parameters. This is adapted from the Twitter documentation:
-
-        https://developer.twitter.com/en/docs/basics/authentication/oauth-1-0a/authorizing-a-request
-
-        Args:
-            url: The URL being requested.
-            method: The HTTP request method.
-            parameters: Any parameters to be passed in the URL.
-
-        Returns:
-            The header string to be passed to the Authorization header.
-
-        Raises:
-            None
-        """
-        # Generate the parameter string.
-        parameters = parameters.copy()
-        parameters.update({
-            "oauth_consumer_key": settings.TWITTER_CONSUMER_KEY,
-            "oauth_nonce": generate_nonce(32),
-            "oauth_signature_method": "HMAC-SHA1",
-            "oauth_timestamp": str(int(time.time())),
-            "oauth_token": settings.TWITTER_ACCESS_TOKEN,
-            "oauth_version": "1.0",
-        })
-        sorted_keys = sorted(parameters.keys())
-        parameter_string = percent_encode("&".join(
-            [f"{key}={parameters[key]}" for key in sorted_keys]))
-        # Generate the signature base string.
-        url = percent_encode(url)
-        signature_base_string = f"{method}&{url}&{parameter_string}".encode(
-            "utf-8")
-        # Generate the signing key.
-        consumer_secret = percent_encode(settings.TWITTER_CONSUMER_SECRET)
-        oauth_token_secret = percent_encode(
-            settings.TWITTER_ACCESS_TOKEN_SECRET)
-        signing_key = f"{consumer_secret}&{oauth_token_secret}".encode("utf-8")
-        # Generate the OAuth signature.
-        hashed = hmac.new(signing_key, signature_base_string, sha1)
-        encoded = base64.b64encode(hashed.digest())
-        oauth_signature = encoded.decode("utf-8")
-        # Return the header string.
-        header_parameters = parameters.copy()
-        header_parameters["oauth_signature"] = oauth_signature
-        header = "OAuth "
-        for key, value in header_parameters.items():
-            key = percent_encode(key)
-            value = percent_encode(value)
-            header = f"{header}{key}=\"{value}\", "
-        return header[:-2]
-
     def post_tweet(self, content):
         """Creates a Tweet on Twitter with the given content.
 
@@ -74,23 +21,33 @@ class TwitterAPIClient(object):
             content: A string containing the text of the Tweet.
 
         Returns:
-            The JSON response from the Twitter API.
+            The created Tweet's ID as a string if creation was
+            successful, else None.
 
         Raises:
             TwitterAPIError: If the Twitter API fails to return a
-                             response.
+                             response or the response's status code is
+                             not 200 OK.
         """
         url = os.path.join(self.BASE_URL, "statuses/update.json")
         parameters = {"status": content}
-        header = self._get_authorization_header(url, "POST", parameters)
+        session = OAuth1Session(
+            settings.TWITTER_CONSUMER_KEY,
+            client_secret=settings.TWITTER_CONSUMER_SECRET,
+            resource_owner_key=settings.TWITTER_ACCESS_TOKEN,
+            resource_owner_secret=settings.TWITTER_ACCESS_TOKEN_SECRET,
+            signature_method=settings.TWITTER_SIGNATURE_METHOD)
         try:
-            response = requests.get(
-                url, params=parameters, headers={"Authorization": header})
+            response = session.post(url, params=parameters)
         except requests.exceptions.RequestException as e:
             raise TwitterAPIError(
                 f"Failed to create Tweet with content {content}. Details: {e}")
+        if response.status_code != HTTPStatus.OK:
+            raise TwitterAPIError(
+                f"Response has unsuccessful status code "
+                f"{response.status_code}.")
         json = response.json()
-        return json
+        return json["id_str"]
 
     def tweet_exists(self, tweet_id):
         """Returns whether or not a Tweet with the given ID exists.
@@ -103,17 +60,26 @@ class TwitterAPIClient(object):
 
         Raises:
             TwitterAPIError: If the Twitter API fails to return a
-                             response.
+                             response or the response's status code is
+                             not 200 OK.
         """
         url = os.path.join(self.BASE_URL, "statuses/lookup.json")
         parameters = {"id": tweet_id}
-        header = self._get_authorization_header(url, "GET", parameters)
+        session = OAuth1Session(
+            settings.TWITTER_CONSUMER_KEY,
+            client_secret=settings.TWITTER_CONSUMER_SECRET,
+            resource_owner_key=settings.TWITTER_ACCESS_TOKEN,
+            resource_owner_secret=settings.TWITTER_ACCESS_TOKEN_SECRET,
+            signature_method=settings.TWITTER_SIGNATURE_METHOD)
         try:
-            response = requests.get(
-                url, params=parameters, headers={"Authorization": header})
+            response = session.get(url, params=parameters)
         except requests.exceptions.RequestException as e:
             raise TwitterAPIError(
                 f"Failed to retrieve Tweet with ID {tweet_id}. Details: {e}")
+        if response.status_code != HTTPStatus.OK:
+            raise TwitterAPIError(
+                f"Response has unsuccessful status code "
+                f"{response.status_code}.")
         json = response.json()
         return len(json) == 1 and json[0]["id_str"] == tweet_id
 
