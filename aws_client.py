@@ -1,14 +1,13 @@
-from boto3.dynamodb.conditions import Attr
 from boto3.dynamodb.conditions import Key
 from constants import AWSResource
+from constants import DynamoDBSettings
 from constants import DynamoDBTable
 from constants import TWEETS_PER_DAY
-from datetime import datetime
+from datetime import date
 from decimal import Decimal
 from settings import DATE_FORMAT
 import boto3
 import botocore
-import uuid
 
 
 class AWSClientError(Exception):
@@ -16,34 +15,16 @@ class AWSClientError(Exception):
     pass
 
 
-class DynamoDBSchema(object):
-    """DynamoDB tables and their expected formats."""
-
-    tweets = {
-        "Id": str,
-        "TweetId": str,
-        "Date": str,
-        "DateEntry": int,
-        "Word": str,
-    }
-
-    unprocessed_words = {
-        "Id": str,
-        "Characters": str,
-        "Pinyin": str,
-        "InsertionTimestamp": Decimal,
-    }
-
-
-def batch_put_unprocessed_words(unprocessed_words):
-    """Store the unprocessed words represented by the given list of
-    dictionaries in a batch write after validating that each conforms to
-    the expected schema.
+def batch_put_items(table, items):
+    """Store the items represented by the given list of dictionaries in
+    a batch write to the given table after validating that each conforms
+    to the expected schema.
 
     Args:
-        unprocessed_words: a list of dict objects representing
-                           UnprocessedWords, each of which must conform
-                           to the expected schema.
+        table: An instance of DynamoDBTable, which contains the table's
+               name and schema.
+        items: A list of dict objects representing items in the given
+               table, each of which must conform to the expected schema.
 
     Returns:
         None.
@@ -51,140 +32,190 @@ def batch_put_unprocessed_words(unprocessed_words):
     Raises:
         AWSClientError: If the AWS put fails.
         TypeError: If one or more inputs has an unexpected type.
-        ValueError: If any UnprocessedWord does not conform to the
-                    expected schema.
+        ValueError: If any item does not conform to the expected schema.
     """
-    if not isinstance(unprocessed_words, list):
-        raise TypeError(
-            f"UnprocessedWords {unprocessed_words} is not a list object.")
-    schema = DynamoDBSchema.unprocessed_words
-    for unprocessed_word in unprocessed_words:
-        if not isinstance(unprocessed_word, dict):
-            raise TypeError(
-                f"UnprocessedWord {unprocessed_word} is not a dict object.")
-        if not validate_item_against_schema(schema, unprocessed_word):
-            raise ValueError(
-                f"UnprocessedWord {unprocessed_word} does not conform to the "
-                f"schema.")
+    if not isinstance(table, DynamoDBTable):
+        raise TypeError(f"Table {table} is not a DynamoDBTable object.")
+    if not isinstance(items, list):
+        raise TypeError(f"Items {items} is not a list object.")
+    table_name = table.value.name
+    table_schema = table.value.schema
+    for item in items:
+        if not isinstance(item, dict):
+            raise TypeError(f"Item {item} is not a dict object.")
+        if not validate_item_against_schema(table_schema, item):
+            raise ValueError(f"Item {item} does not conform to the schema.")
     try:
         dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
-        table = dynamodb.Table(DynamoDBTable.UNPROCESSED_WORDS)
+        table = dynamodb.Table(table_name)
         with table.batch_writer() as batch:
-            for unprocessed_word in unprocessed_words:
-                batch.put_item(Item=unprocessed_word)
+            for item in items:
+                batch.put_item(Item=item)
     except boto3.exceptions.ClientError as e:
         raise AWSClientError(
             f"Failed to retrieve response from AWS. Details: {e}")
 
 
-def get_random_previous_tweet():
-    """Return a random previously-tweeted Tweet.
+def get_and_delete_unprocessed_word():
+    """Return an UnprocessedWord after validating that it conforms to
+    the expected schema. Delete it from the table.
 
     Args:
         None.
 
     Returns:
-        A dictionary response from AWS including "Items" and "Count"
-        keys.
+        A dictionary representing an entry in the UnprocessedWords
+        table. If no words remain, return the empty dictionary.
+
+    Raises:
+        AWSClientError: If the AWS query fails.
+        KeyError: If the response is missing an expected key.
+        ValueError: If the returned item does not conform to the
+                    expected schema.
+    """
+    table = DynamoDBTable.UNPROCESSED_WORDS
+    table_name = table.value.name
+    table_schema = table.value.schema
+    item = dict()
+    try:
+        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        table = dynamodb.Table(table_name)
+        response = table.scan(Limit=1)
+        items = response["Items"]
+        if not items:
+            return item
+        item = items[0]
+        key = {
+            "Id": item["Id"],
+            "InsertionTimestamp": Decimal(str(item["InsertionTimestamp"])),
+        }
+        table.delete_item(Key=key)
+    except botocore.exceptions.ClientError as e:
+        raise AWSClientError(
+            f"Failed to retrieve response from AWS. Details: {e}")
+    if not validate_item_against_schema(table_schema, item):
+        raise ValueError(f"Item {item} does not conform to the schema.")
+    return item
+
+
+def get_earliest_tweet_date():
+    """Return the date of the earliest Tweet stored. If this date has
+    been previously stored, retrieve it from the Settings table.
+    Otherwise, return None.
+
+    Args:
+        None.
+
+    Returns:
+        A string of the form "%Y-%m-%d" or None.
 
     Raises:
         AWSClientError: If the AWS query fails.
     """
-    random_id = str(uuid.uuid4())
     try:
         dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
-        table = dynamodb.Table(DynamoDBTable.TWEETS)
-        # Find a record with UUID less than or equal to the given random UUID.
+        table_name = DynamoDBTable.SETTINGS.value.name
+        table = dynamodb.Table(table_name)
         kwargs = {
-            "TableName": DynamoDBTable.TWEETS,
+            "TableName": table_name,
             "Select": "ALL_ATTRIBUTES",
-            "KeyConditionExpression": Key("Id").le(random_id),
+            "KeyConditionExpression": Key("Name").eq(
+                DynamoDBSettings.EARLIEST_TWEET_DATE)
         }
         response = table.query(**kwargs)
-        # If the UUID was less than the smallest stored, find a greater one.
-        if response["Count"] == 0:
-            kwargs["KeyConditionExpression"] = Key("Id").gt(random_id)
-            response = table.query(**kwargs)
-    except botocore.exceptions.ClientError as e:
+    except boto3.exceptions.ClientError as e:
         raise AWSClientError(
             f"Failed to retrieve response from AWS. Details: {e}")
-    return response
+    items = response["Items"]
+    if items:
+        entry = items[0]
+        return entry["Value"]
+    return None
 
 
-def get_tweets_on_date(dt, date_entry=None):
+def get_tweets_on_date(d, date_entry=None):
     """Return the Tweets tweeted on the date represented by the given
-    datetime object. Optionally also filter on what number entry the
-    tweet was on its date.
+    date object. Optionally also filter on what number entry the tweet
+    was on its date.
 
     Args:
-        dt: A datetime object to be used to filter Tweets on their Date
-            field.
+        d: A date object to be used to filter Tweets on their Date
+           field.
         date_entry: An integer used to filter Tweets on their DateEntry
                     field.
 
     Returns:
-        A dictionary response from AWS including "Items" and "Count"
-        keys.
+        A list of dictionaries representing entries in the Tweets table.
 
     Raises:
         AWSClientError: If the AWS query fails.
+        KeyError: If the response is missing an expected key.
         TypeError: If one or more inputs has an unexpected type.
         ValueError: If the tweet entry falls outside of the expected
                     range.
     """
-    if not isinstance(dt, datetime):
-        raise TypeError(f"Date {dt} is not a datetime object.")
+    if not isinstance(d, date):
+        raise TypeError(f"Date {d} is not a date object.")
     if date_entry is not None:
         if not isinstance(date_entry, int):
             raise TypeError(f"Date entry {date_entry} is not an integer.")
         if date_entry < 0 or date_entry >= TWEETS_PER_DAY:
             raise ValueError(f"Invalid date entry {date_entry}.")
-    date = dt.strftime(DATE_FORMAT)
+    date_str = d.strftime(DATE_FORMAT)
+    tweets = []
     try:
         dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
-        table = dynamodb.Table(DynamoDBTable.TWEETS)
+        table_name = DynamoDBTable.TWEETS.value.name
+        table = dynamodb.Table(table_name)
         kwargs = {
-            "TableName": DynamoDBTable.TWEETS,
+            "TableName": table_name,
             "IndexName": "DateIndex",
             "Select": "ALL_ATTRIBUTES",
-            "KeyConditionExpression": Key("Date").eq(date)
+            "KeyConditionExpression": Key("Date").eq(date_str)
         }
         if date_entry is not None:
-            kwargs["FilterExpression"] &= Attr("DateEntry").eq(date_entry)
+            kwargs["KeyConditionExpression"] &= Key("DateEntry").eq(date_entry)
         response = table.query(**kwargs)
+        for item in response["Items"]:
+            tweets.append(item)
     except botocore.exceptions.ClientError as e:
         raise AWSClientError(
             f"Failed to retrieve response from AWS. Details: {e}")
-    return response
+    return tweets
 
 
-def put_tweet(tweet):
-    """Store the Tweet represented by the given dictionary after
-    validating that it conforms to the expected schema. Return the
-    response.
+def put_item(table, item):
+    """Store the item represented by the given dictionary in the given
+    table after validating that it conforms to the expected schema.
+    Return the response.
 
     Args:
-        tweet: a dict object representing a Tweet, which must conform to
-               the expected schema.
+        table: an instance of DynamoDBTable, which contains the table's
+               name and schema.
+        item: a dict object representing an item in the given table,
+              which must conform to the expected schema.
 
     Returns:
         A dictionary response from AWS including an "Attributes" key.
 
     Raises:
         AWSClientError: If the AWS put fails.
+        KeyError: If the response is missing an expected key.
         TypeError: If one or more inputs has an unexpected type.
-        ValueError: If the Tweet does not conform to the expected
-                    schema.
+        ValueError: If the item does not conform to the expected schema.
     """
-    if not isinstance(tweet, dict):
-        raise TypeError(f"Tweet {tweet} is not a dict object.")
-    schema = DynamoDBSchema.tweets
-    if not validate_item_against_schema(schema, tweet):
-        raise ValueError(f"Tweet {tweet} does not conform to the schema.")
+    if not isinstance(table, DynamoDBTable):
+        raise TypeError(f"Table {table} is not a DynamoDBTable object.")
+    if not isinstance(item, dict):
+        raise TypeError(f"Item {item} is not a dict object.")
+    table_name = table.value.name
+    table_schema = table.value.schema
+    if not validate_item_against_schema(table_schema, item):
+        raise ValueError(f"Item {item} does not conform to the schema.")
     try:
         dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
-        table = dynamodb.Table(DynamoDBTable.TWEETS)
-        response = table.put_item(Item=tweet)
+        table = dynamodb.Table(table_name)
+        response = table.put_item(Item=item)
     except botocore.exceptions.ClientError as e:
         raise AWSClientError(
             f"Failed to retrieve response from AWS. Details: {e}")

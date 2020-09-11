@@ -1,21 +1,25 @@
 from aws_client import AWSClientError
-from aws_client import get_random_previous_tweet
+from aws_client import get_and_delete_unprocessed_word
+from aws_client import get_earliest_tweet_date
 from aws_client import get_tweets_on_date
-from aws_client import put_tweet
+from aws_client import put_item
+from aws_client import validate_item_against_schema
 from collections import namedtuple
-from constants import AWSResource
+from constants import DynamoDBSettings
 from constants import DynamoDBTable
 from constants import TWEET_MAX_CHARS
 from constants import TWEET_URL_LENGTH
 from constants import TWEETS_PER_DAY
+from datetime import date
 from datetime import datetime
 from datetime import timedelta
-from http import HTTPStatus
+from decimal import Decimal
 from mdbg_parser import MDBGParser
 from settings import DATE_FORMAT
 from settings import TWITTER_USER_USERNAME
 from twitter_api_client import TwitterAPIClient
-import boto3
+from utils import random_dates_in_range
+from utils import tweet_url
 import uuid
 
 """"""
@@ -26,141 +30,95 @@ def main():
 
     """
     # Exit if the designated number of Tweets have already been posted today.
-    today = datetime.today()
-    tweets_today = get_tweets_on_date(today)
-    if tweets_today["Count"] >= TWEETS_PER_DAY:
+    today = date.today()
+    num_tweets_today = len(get_tweets_on_date(today))
+    if num_tweets_today >= TWEETS_PER_DAY:
+        # Log
         return
+    date_entry = num_tweets_today
 
-    date_entry = tweets_today["Count"]
-
-    # Retrieve the next unprocessed word.
-    dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
-    table = dynamodb.Table(DynamoDBTable.UNPROCESSED_WORDS)
-
-    # This table is sorted by insertion timestamp, so get the first one.
-    response = table.scan(Limit=1)
-    items = response["Items"]
-    entry = items[0]
-    characters = entry["Characters"]
-    pinyin = entry["Pinyin"]
+    # Retrieve the next unprocessed word and delete it from the table.
+    unprocessed_word = get_and_delete_unprocessed_word()
+    if not unprocessed_word:
+        # Log
+        return
+    characters = unprocessed_word["Characters"]
+    pinyin = unprocessed_word["Pinyin"]
 
     # Retrieve the word's definition.
     mdbg_parser = MDBGParser(characters, pinyin=pinyin)
     entry_found = mdbg_parser.run()
     if not entry_found:
         raise Exception(f"No entry found for {characters}.")
-    print(f"Simplified: {mdbg_parser.simplified}")
-    print(f"Pinyin: {mdbg_parser.pinyin}")
-    print(f"Definitions: {mdbg_parser.definitions}")
 
     # Retrieve previous Tweets.
-    last_week = get_previous_tweet_details(
-        today - timedelta(days=7), date_entry=date_entry)
-    last_month = get_previous_tweet_details(
-        today - timedelta(days=30), date_entry=date_entry)
-    random = get_random_previous_tweet()
+    previous_tweets = get_previous_tweets(date_entry)
 
     # Construct the body of the Tweet.
-    body = generate_tweet_body(mdbg_parser, last_week, last_month, random)
+    body = generate_tweet_body(mdbg_parser, previous_tweets)
 
     # Post the Tweet.
-    twitter_client = TwitterAPIClient()
-    post_response = twitter_client.post_tweet(body)
-
-    # Check the response.
-    if response.status_code != HTTPStatus.OK:
-        return
-
-    json = post_response.json()
-    tweet_id_str = json["id_str"]
+    tweet_id_str = TwitterAPIClient().post_tweet(body)
+    if tweet_id_str is None:
+        raise Exception(f"Failed to create Tweet with body {body}.")
 
     # Create an entry in the Tweets table.
     tweet = {
         "Id": str(uuid.uuid4()),
         "TweetId": tweet_id_str,
         "Date": today.strftime(DATE_FORMAT),
-        "DateEntry": date_entry,
+        "DateEntry": Decimal(str(date_entry)),
         "Word": mdbg_parser.simplified,
     }
-    response = put_tweet(tweet)
-
-    # Check the response.
-    if response.status_code != HTTPStatus.OK:
-        raise Exception(f"Failed to save Tweet {tweet}.")
-
-
-def get_previous_tweet_details(dt, date_entry=None):
-    """Return a dictionary containing details about the date_entry-th
-    tweet on the given date.
-
-    Args:
-        dt: A datetime object
-        date_entry: An integer representing what number entry the tweet
-                    was on its date.
-
-    Returns:
-        A dictionary containing the tweet's Twitter ID, the word
-        associated with the tweet, and the URL to the tweet.
-
-    Raises:
-        None.
-    """
     try:
-        tweets = get_tweets_on_date(dt, date_entry=date_entry)
+        put_item(DynamoDBTable.TWEETS, tweet)
     except AWSClientError as e:
-        return dict()
-    if tweets["Count"] == 0:
-        tweet = None
-    elif tweets["Count"] > 1:
-        tweet = None
-    else:
-        tweet = tweets["Items"][0]
+        raise e
 
-    if not tweet:
-        return dict()
-
-    word = tweet["Word"]
-    tweet_id = tweet["TweetId"]
-
-    tweet_exists = TwitterAPIClient().tweet_exists(str(tweet_id))
-    if not tweet_exists:
-        raise Exception()
-
-    url = f"https://twitter.com/{TWITTER_USER_USERNAME}/statuses/{tweet_id}"
-    return dict(tweet_id=tweet_id, word=word, url=url)
+    # If no earliest Tweet date has been recorded, store this one.
+    if get_earliest_tweet_date() is None:
+        setting = {
+            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE,
+            "Value": tweet["Date"],
+        }
+        try:
+            put_item(DynamoDBTable.SETTINGS, setting)
+        except AWSClientError as e:
+            # Log a warning, but proceed
+            pass
 
 
-def generate_tweet_body(mdbg_parser, last_week={}, last_month={}, random={}):
+def generate_tweet_body(mdbg_parser, previous_tweets):
     """Return the formatted body of a new Tweet, given the current
     and previous entries.
 
     Args:
         mdbg_parser: An instance of MDBGParser, which contains the
                      current word, pinyin, and definitions.
-        last_week: A dictionary representing the Tweet from seven days
-                   ago, with "word" and "url" keys.
-        last_month: A dictionary representing the Tweet from thirty days
-                    ago, with "word" and "url" keys.
-        random: A dictionary representing the Tweet from a random number
-                of days ago, with "word" and "url" keys.
+        previous_tweets: A namedtuple with name PreviousTweets and
+                         fields with names "last_week", "last_month",
+                         and "random", where each name points to a
+                         dictionary containing the Tweet's Twitter ID,
+                         the word associated with the Tweet, and the URL
+                         to the Tweet.
 
     Returns:
         A string representing the body of the new Tweet.
 
     Raises:
-        Exception.
+        Exception, if any errors occur.
     """
     TweetEntry = namedtuple("TweetEntry", "entry char_count")
     tweet_entries = dict()
 
     # Compute the previous entries.
     remaining_chars = TWEET_MAX_CHARS
-    previous_tweets = (
-        ("Last Week", last_week),
-        ("Last Month", last_month),
-        ("Random", random),
+    previous_tweets_and_labels = (
+        ("Last Week", previous_tweets.last_week),
+        ("Last Month", previous_tweets.last_month),
+        ("Random", previous_tweets.random),
     )
-    for label, tweet in previous_tweets:
+    for label, tweet in previous_tweets_and_labels:
         if not tweet:
             continue
         if "word" not in tweet or "url" not in tweet:
@@ -170,7 +128,6 @@ def generate_tweet_body(mdbg_parser, last_week={}, last_month={}, random={}):
                       len(tweet["word"]) -
                       len(tweet["url"]) +
                       TWEET_URL_LENGTH)
-
         if remaining_chars - char_count <= 0:
             continue
         remaining_chars = remaining_chars - char_count
@@ -217,5 +174,97 @@ def generate_tweet_body(mdbg_parser, last_week={}, last_month={}, random={}):
     return body
 
 
+def get_previous_tweets(date_entry):
+    """Return details about previous Tweets. Namely, retrieve details
+    about the date_entry-th Tweets from 7 days ago, 30 days ago, and a
+    random number of days ago.
+
+    If a given Tweet does not exist, its corresponding entry in the
+    output will be empty.
+
+    Args:
+        date_entry: An integer representing the number of Tweets tweeted
+                    before the desired one on the date it was tweeted.
+
+    Returns:
+        A namedtuple with name PreviousTweets and fields with names
+        "last_week", "last_month", and "random", where each name points
+        to a dictionary containing the Tweet's Twitter ID, the word
+        associated with the Tweet, and the URL to the Tweet.
+    """
+    today = date.today()
+    tweets_by_date = {
+        "last_week": get_tweets_on_date(
+            today - timedelta(days=7), date_entry=date_entry),
+        "last_month": get_tweets_on_date(
+            today - timedelta(days=30), date_entry=date_entry),
+        "random": get_tweets_on_random_date(date_entry=date_entry),
+    }
+    twitter_client = TwitterAPIClient()
+    table_schema = DynamoDBTable.TWEETS.value.schema
+
+    for date_key in ("last_week", "last_month", "random"):
+        tweets = tweets_by_date[date_key]
+        tweets_by_date[date_key] = dict()
+        if not isinstance(tweets, list):
+            # Log
+            continue
+        if not tweets:
+            # Log
+            continue
+        if len(tweets) > 1:
+            # Log a warning, but proceed
+            pass
+        tweet = tweets[0]
+        if not validate_item_against_schema(table_schema, tweet):
+            # Log
+            continue
+        tweet_id = tweet["TweetId"]
+        if not twitter_client.tweet_exists(tweet_id):
+            # Log
+            continue
+        word = tweet["Word"]
+        url = tweet_url(TWITTER_USER_USERNAME, tweet_id)
+        tweets_by_date[date_key] = dict(tweet_id=tweet_id, word=word, url=url)
+
+    PreviousTweets = namedtuple(
+        "PreviousTweets", "last_week last_month random")
+    return PreviousTweets(
+        last_week=tweets_by_date["last_week"],
+        last_month=tweets_by_date["last_month"],
+        random=tweets_by_date["random"])
+
+
+def get_tweets_on_random_date(date_entry=None, num_tries=5):
+    """Return Tweets from a random previous date. Optionally also filter
+    on what number entry the tweet was on its date. Make at most
+    num_tries attempts.
+
+    Args:
+        date_entry: An integer used to filter Tweets on their DateEntry
+            field.
+        num_tries: The number of attempts to make to retrieve a Tweet.
+
+    Returns:
+        A list of dictionaries representing entries in the Tweets table.
+
+    Raises:
+        AWSClientError: If any AWS query fails.
+        TypeError: Raised by the subroutine for computing random dates.
+        ValueError: Raised by the subroutine for computing random dates.
+    """
+    min_date = get_earliest_tweet_date()
+    if min_date is None:
+        return None
+    start = datetime.strptime(min_date, DATE_FORMAT).date()
+    end = date.today()
+    random_dates = random_dates_in_range(start, end, num_tries)
+    for random_date in random_dates:
+        tweets = get_tweets_on_date(random_date, date_entry=date_entry)
+        if tweets:
+            return tweets
+    return []
+
+
 if __name__ == "__main__":
-    pass
+    main()
