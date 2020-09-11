@@ -1,13 +1,8 @@
-from hashlib import sha1
 from http import HTTPStatus
 from requests_oauthlib import OAuth1Session
-from utils import generate_nonce, percent_encode
-import base64
-import hmac
 import os
 import requests
 import settings
-import time
 
 
 class TwitterAPIClient(object):
