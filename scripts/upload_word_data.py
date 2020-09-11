@@ -1,5 +1,6 @@
 from ..aws_client import AWSClientError
-from ..aws_client import batch_put_unprocessed_words
+from ..aws_client import batch_put_items
+from ..constants import DynamoDBTable
 from datetime import datetime
 from datetime import timezone
 from decimal import Decimal
@@ -51,7 +52,7 @@ def main():
             }
             unprocessed_words.append(unprocessed_word)
     try:
-        batch_put_unprocessed_words(unprocessed_words)
+        batch_put_items(DynamoDBTable.UNPROCESSED_WORDS, unprocessed_words)
         print("Successfully uploaded word data.")
     except AWSClientError as e:
         print(e)
