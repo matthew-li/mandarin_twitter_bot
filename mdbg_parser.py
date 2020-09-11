@@ -60,7 +60,6 @@ class MDBGParser(object):
                 f"Invalid response status code: {response.status_code}.")
         return response.content
 
-
     def run(self):
         """Searches the dictionary for the characters, storing its definitions.
 
@@ -78,7 +77,7 @@ class MDBGParser(object):
             MDBGError: If the response content format is malformed.
         """
         search_results = self.get_search_results(self.simplified)
-        soup = BeautifulSoup(search_results)
+        soup = BeautifulSoup(search_results, "html.parser")
         table = soup.find("table", {"class": "wordresults"})
         tbody = table.find("tbody")
 
