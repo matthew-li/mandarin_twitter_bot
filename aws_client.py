@@ -12,7 +12,12 @@ import botocore
 
 class AWSClientError(Exception):
     """The base class for exceptions in this module."""
-    pass
+
+    def __init__(self, aws_error, message=""):
+        if not message.strip():
+            message = "Failed to retrieve response from AWS. Details: "
+        message = message + str(aws_error)
+        super(AWSClientError, self).__init__(message)
 
 
 def batch_put_items(table, items):
@@ -52,8 +57,7 @@ def batch_put_items(table, items):
             for item in items:
                 batch.put_item(Item=item)
     except boto3.exceptions.ClientError as e:
-        raise AWSClientError(
-            f"Failed to retrieve response from AWS. Details: {e}")
+        raise AWSClientError(e.response["Error"])
 
 
 def get_and_delete_unprocessed_word():
@@ -91,8 +95,7 @@ def get_and_delete_unprocessed_word():
         }
         table.delete_item(Key=key)
     except botocore.exceptions.ClientError as e:
-        raise AWSClientError(
-            f"Failed to retrieve response from AWS. Details: {e}")
+        raise AWSClientError(e.response["Error"])
     if not validate_item_against_schema(table_schema, item):
         raise ValueError(f"Item {item} does not conform to the schema.")
     return item
@@ -124,8 +127,7 @@ def get_earliest_tweet_date():
         }
         response = table.query(**kwargs)
     except boto3.exceptions.ClientError as e:
-        raise AWSClientError(
-            f"Failed to retrieve response from AWS. Details: {e}")
+        raise AWSClientError(e.response["Error"])
     items = response["Items"]
     if items:
         entry = items[0]
@@ -179,8 +181,7 @@ def get_tweets_on_date(d, date_entry=None):
         for item in response["Items"]:
             tweets.append(item)
     except botocore.exceptions.ClientError as e:
-        raise AWSClientError(
-            f"Failed to retrieve response from AWS. Details: {e}")
+        raise AWSClientError(e.response["Error"])
     return tweets
 
 
@@ -217,8 +218,7 @@ def put_item(table, item):
         table = dynamodb.Table(table_name)
         response = table.put_item(Item=item)
     except botocore.exceptions.ClientError as e:
-        raise AWSClientError(
-            f"Failed to retrieve response from AWS. Details: {e}")
+        raise AWSClientError(e.response["Error"])
     return response
 
 
