@@ -1,8 +1,10 @@
 import configparser
 import os
 
+"""This module contains settings referenced by the application."""
 
-# Dates are stored in the following format.
+
+# The format in which dates are stored.
 DATE_FORMAT = "%Y-%m-%d"
 
 # Read configuration from a file.

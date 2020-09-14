@@ -22,12 +22,20 @@ from utils import random_dates_in_range
 from utils import tweet_url
 import uuid
 
-""""""
+"""This module contains the methods needed to post a Tweet containing a
+word, details about that word, and URLs to previously posted Tweets."""
 
 
 def main():
-    """
+    """This method performs creates a new Tweet.
 
+    In particular, it performs the following:
+        1. Pop an unprocessed word from DynamoDB.
+        2. Retrieve the word's definition from the MDBG dictionary.
+        3. Retrieve information about previously posted Tweets from
+           DynamoDB.
+        4. Construct and post a new Tweet.
+        5. Store information about the new Tweet in DynamoDB.
     """
     # Exit if the designated number of Tweets have already been posted today.
     today = date.today()
@@ -237,7 +245,7 @@ def get_previous_tweets(date_entry):
 
 def get_tweets_on_random_date(date_entry=None, num_tries=5):
     """Return Tweets from a random previous date. Optionally also filter
-    on what number entry the tweet was on its date. Make at most
+    on what number entry the Tweet was on its date. Make at most
     num_tries attempts.
 
     Args:

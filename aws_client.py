@@ -9,6 +9,9 @@ from settings import DATE_FORMAT
 import boto3
 import botocore
 
+"""This module contains methods that interface with resources stored in
+Amazon Web Services."""
+
 
 class AWSClientError(Exception):
     """The base class for exceptions in this module."""
@@ -110,7 +113,7 @@ def get_earliest_tweet_date():
         None.
 
     Returns:
-        A string of the form "%Y-%m-%d" or None.
+        A string conforming to settings.DATE_FORMAT or None.
 
     Raises:
         AWSClientError: If the AWS query fails.
@@ -137,7 +140,7 @@ def get_earliest_tweet_date():
 
 def get_tweets_on_date(d, date_entry=None):
     """Return the Tweets tweeted on the date represented by the given
-    date object. Optionally also filter on what number entry the tweet
+    date object. Optionally also filter on what number entry the Tweet
     was on its date.
 
     Args:
@@ -153,7 +156,7 @@ def get_tweets_on_date(d, date_entry=None):
         AWSClientError: If the AWS query fails.
         KeyError: If the response is missing an expected key.
         TypeError: If one or more inputs has an unexpected type.
-        ValueError: If the tweet entry falls outside of the expected
+        ValueError: If the Tweet entry falls outside of the expected
                     range.
     """
     if not isinstance(d, date):

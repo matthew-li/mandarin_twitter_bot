@@ -2,6 +2,8 @@ from datetime import date
 from datetime import timedelta
 import random
 
+"""This module contains utility methods."""
+
 
 def random_dates_in_range(start, end, k):
     """Return at most k unique random dates between the given start

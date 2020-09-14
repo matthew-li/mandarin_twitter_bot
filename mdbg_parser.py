@@ -3,6 +3,10 @@ import requests
 from bs4 import BeautifulSoup
 from http import HTTPStatus
 
+"""This module contains an methods that retrieve and parse information
+about Chinese characters from the MDBG Chinese Dictionary:
+https://www.mdbg.net/chinese/dictionary."""
+
 
 logging.basicConfig(filename="mdbg.log", level=logging.INFO)
 
@@ -10,12 +14,13 @@ logging.basicConfig(filename="mdbg.log", level=logging.INFO)
 class MDBGParser(object):
     """An object that queries mdbg.net's Chinese dictionary.
 
-    It retrieves and stores the pinyin and definitions found for a set of
-    simplified Chinese characters.
+    It retrieves and stores the pinyin and definitions found for a set
+    of simplified Chinese characters.
 
     Attributes:
         simplified: A string of simplified Chinese characters.
-        pinyin: The corresponding pinyin, which may be updated by the parser.
+        pinyin: The corresponding pinyin, which may be updated by the
+                parser.
         definitions: A list of definitions found by the parser.
 
     Typical Usage Example:
@@ -37,14 +42,15 @@ class MDBGParser(object):
         self.definitions = []
 
     def get_search_results(self, search):
-        """Returns the response from a lookup for the given search phrase.
+        """Returns the response from a lookup for the given search
+        phrase.
 
         Args:
             search: A string comprised of simplified Chinese characters.
 
         Returns:
-            The content of the HTTP response from making a GET request for the
-            characters to the online dictionary.
+            The content of the HTTP response from making a GET request
+            for the characters to the online dictionary.
 
         Raises:
             MDBGError: If the response status code is not 200 OK.
@@ -61,14 +67,16 @@ class MDBGParser(object):
         return response.content
 
     def run(self):
-        """Searches the dictionary for the characters, storing its definitions.
+        """Searches the dictionary for the characters, storing its
+        definitions.
 
         Retrieves HTML from the search results and parses it until the
-        characters are found. Sets the parser's pinyin to the result's if the
-        two differ. Stores the "/"-separated definitions in a list.
+        characters are found. Sets the parser's pinyin to the result's
+        if the two differ. Stores the "/"-separated definitions in a
+        list.
 
         Args:
-            None
+            None.
 
         Returns:
             A boolean denoting whether or not a match was found.

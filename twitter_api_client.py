@@ -4,6 +4,9 @@ import os
 import requests
 import settings
 
+"""This module contains methods that act as a thin layer over the
+Twitter REST API."""
+
 
 class TwitterAPIClient(object):
 
