@@ -20,7 +20,7 @@ class AWSClientError(Exception):
         if not message.strip():
             message = "Failed to retrieve response from AWS. Details: "
         message = message + str(aws_error)
-        super(AWSClientError, self).__init__(message)
+        super().__init__(message)
 
 
 def batch_put_items(table, items):
