@@ -1,9 +1,9 @@
-import logging
-import requests
 from bs4 import BeautifulSoup
 from http import HTTPStatus
+import logging
+import requests
 
-"""This module contains an methods that retrieve and parse information
+"""This module contains methods that retrieve and parse information
 about Chinese characters from the MDBG Chinese Dictionary:
 https://www.mdbg.net/chinese/dictionary."""
 
@@ -25,7 +25,7 @@ class MDBGParser(object):
 
     Typical Usage Example:
 
-        mdbg_parser = MDBGParser("你好", pinyin="nĭhăo")
+        mdbg_parser = MDBGParser("你好", pinyin="nǐhǎo")
         entry_found = mdbg_parser.run()
         if entry_found:
             print(mdbg_parser.simplified)
@@ -36,7 +36,23 @@ class MDBGParser(object):
     base_url = "https://www.mdbg.net/chinese/dictionary"
 
     def __init__(self, simplified, pinyin=None):
-        """Initializes the characters, and, optionally, the pinyin."""
+        """Initializes the characters, and, optionally, the pinyin.
+
+        Args:
+            simplified: A string of simplified Chinese characters.
+            pinyin: A string containing the pinyin for the given
+                    characters.
+
+        Returns:
+            None.
+
+        Raises:
+            TypeError: If one or more inputs has an unexpected type.
+        """
+        if not isinstance(simplified, str):
+            raise TypeError(f"Simplified {simplified} is not a string.")
+        if pinyin is not None and not isinstance(pinyin, str):
+            raise TypeError(f"Pinyin {pinyin} is not a string.")
         self.simplified = simplified
         self.pinyin = pinyin
         self.definitions = []
@@ -54,7 +70,10 @@ class MDBGParser(object):
 
         Raises:
             MDBGError: If the response status code is not 200 OK.
+            TypeError: If the search phrase is not a string.
         """
+        if not isinstance(search, str):
+            raise TypeError(f"Search phrase {search} is not a string.")
         params = {
             "page": "worddict",
             "wdrst": "0",
@@ -89,7 +108,7 @@ class MDBGParser(object):
         table = soup.find("table", {"class": "wordresults"})
         tbody = table.find("tbody")
 
-        simplified_match, pinyin_match = False, False
+        simplified_match = False
         for tr in tbody.findAll("tr", {"class": "row"}):
             for div in tr.findAll("div"):
                 if not div.get("class"):
@@ -109,9 +128,7 @@ class MDBGParser(object):
                     for span in div.select("span[class*='mpt']"):
                         pinyin = pinyin + span.text.strip()
                     if self.pinyin:
-                        if pinyin == self.pinyin:
-                            pinyin_match = True
-                        else:
+                        if pinyin != self.pinyin:
                             logging.info(
                                 f"Pinyin updated from {self.pinyin} to "
                                 f"{pinyin}.")

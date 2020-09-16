@@ -4,7 +4,6 @@ from settings import DATE_FORMAT
 from utils import random_dates_in_range
 import unittest
 
-
 """A test module for utils.py."""
 
 
