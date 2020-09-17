@@ -45,6 +45,7 @@ class TwitterAPIClient(object):
                 f"Response has unsuccessful status code "
                 f"{response.status_code}.")
         json = response.json()
+        session.close()
         return json["id_str"]
 
     def tweet_exists(self, tweet_id):
@@ -79,6 +80,7 @@ class TwitterAPIClient(object):
                 f"Response has unsuccessful status code "
                 f"{response.status_code}.")
         json = response.json()
+        session.close()
         return len(json) == 1 and json[0]["id_str"] == tweet_id
 
 
