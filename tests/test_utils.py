@@ -21,36 +21,48 @@ class TestRandomDatesInRange(unittest.TestCase):
         type."""
         good_start, good_end, good_k = self.start, self.end, 1
         bad_start, bad_end, bad_k = str(), int(), list()
-        try:
-            random_dates_in_range(bad_start, good_end, good_k)
-            random_dates_in_range(good_start, bad_end, good_k)
-            random_dates_in_range(good_start, good_end, bad_k)
-        except TypeError:
-            pass
-        else:
-            self.fail("A TypeError should have been raised.")
+        arg_sets = [
+            (bad_start, good_end, good_k),
+            (good_start, bad_end, good_k),
+            (good_start, good_end, bad_k),
+        ]
+        for arg_set in arg_sets:
+            try:
+                random_dates_in_range(arg_set[0], arg_set[1], arg_set[2])
+            except TypeError:
+                pass
+            else:
+                self.fail("A TypeError should have been raised.")
 
     def test_bad_date_order(self):
         """Test that an error is raised if the end date is less than or
         equal to the start date."""
-        try:
-            random_dates_in_range(self.end, self.start, 1)
-            random_dates_in_range(self.start, self.start, 1)
-        except ValueError:
-            pass
-        else:
-            self.fail("A ValueError should have been raised.")
+        arg_sets = [
+            (self.end, self.start, 1),
+            (self.start, self.start, 1),
+        ]
+        for arg_set in arg_sets:
+            try:
+                random_dates_in_range(arg_set[0], arg_set[1], arg_set[2])
+            except ValueError:
+                pass
+            else:
+                self.fail("A ValueError should have been raised.")
 
     def test_non_positive_k(self):
         """Test that an error is raised if the input k is
         non-positive."""
-        try:
-            random_dates_in_range(self.start, self.end, -1)
-            random_dates_in_range(self.start, self.end, 0)
-        except ValueError:
-            pass
-        else:
-            self.fail("A ValueError should have been raised.")
+        arg_sets = [
+            (self.start, self.end, -1),
+            (self.start, self.end, 0),
+        ]
+        for arg_set in arg_sets:
+            try:
+                random_dates_in_range(arg_set[0], arg_set[1], arg_set[2])
+            except ValueError:
+                pass
+            else:
+                self.fail("A ValueError should have been raised.")
 
     def test_dates_in_range(self):
         """Test that the generated dates are in the range
