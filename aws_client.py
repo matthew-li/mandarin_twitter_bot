@@ -5,6 +5,7 @@ from constants import DynamoDBTable
 from constants import TWEETS_PER_DAY
 from datetime import date
 from decimal import Decimal
+from settings import AWS_DYNAMODB_ENDPOINT_URL
 from settings import DATE_FORMAT
 import boto3
 import botocore
@@ -54,7 +55,8 @@ def batch_put_items(table, items):
         if not validate_item_against_schema(table_schema, item):
             raise ValueError(f"Item {item} does not conform to the schema.")
     try:
-        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        dynamodb = boto3.resource(
+            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
         table = dynamodb.Table(table_name)
         with table.batch_writer() as batch:
             for item in items:
@@ -85,7 +87,8 @@ def get_and_delete_unprocessed_word():
     table_schema = table.value.schema
     item = dict()
     try:
-        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        dynamodb = boto3.resource(
+            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
         table = dynamodb.Table(table_name)
         response = table.scan(Limit=1)
         items = response["Items"]
@@ -119,7 +122,8 @@ def get_earliest_tweet_date():
         AWSClientError: If the AWS query fails.
     """
     try:
-        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        dynamodb = boto3.resource(
+            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
         table_name = DynamoDBTable.SETTINGS.value.name
         table = dynamodb.Table(table_name)
         kwargs = {
@@ -169,7 +173,8 @@ def get_tweets_on_date(d, date_entry=None):
     date_str = d.strftime(DATE_FORMAT)
     tweets = []
     try:
-        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        dynamodb = boto3.resource(
+            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
         table_name = DynamoDBTable.TWEETS.value.name
         table = dynamodb.Table(table_name)
         kwargs = {
@@ -217,7 +222,8 @@ def put_item(table, item):
     if not validate_item_against_schema(table_schema, item):
         raise ValueError(f"Item {item} does not conform to the schema.")
     try:
-        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
+        dynamodb = boto3.resource(
+            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
         table = dynamodb.Table(table_name)
         response = table.put_item(Item=item)
     except botocore.exceptions.ClientError as e:

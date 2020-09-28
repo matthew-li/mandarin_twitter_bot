@@ -8,10 +8,15 @@ import os
 DATE_FORMAT = "%Y-%m-%d"
 
 # Read configuration from a file.
-CONFIG_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "config.conf")
+CONFIG_FILE = os.environ["TWITTER_BOT_SETTINGS_MODULE"].strip()
 config = configparser.ConfigParser()
 config.read(CONFIG_FILE)
+
+# AWS-specific settings.
+section = "aws"
+AWS_DYNAMODB_ENDPOINT_URL = config.get(section, "endpoint_url")
+if not AWS_DYNAMODB_ENDPOINT_URL.strip():
+    AWS_DYNAMODB_ENDPOINT_URL = None
 
 # Twitter-specific settings.
 section = "twitter"
