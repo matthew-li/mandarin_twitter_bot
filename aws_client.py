@@ -25,7 +25,7 @@ class AWSClientError(Exception):
 
 
 def batch_put_items(table, items):
-    """Store the items represented by the given list of dictionaries in
+    """Stores the items represented by the given list of dictionaries in
     a batch write to the given table after validating that each conforms
     to the expected schema.
 
@@ -66,8 +66,8 @@ def batch_put_items(table, items):
 
 
 def get_and_delete_unprocessed_word():
-    """Return an UnprocessedWord after validating that it conforms to
-    the expected schema. Delete it from the table.
+    """Returns an UnprocessedWord after validating that it conforms to
+    the expected schema. Deletes it from the table.
 
     Args:
         None.
@@ -108,9 +108,9 @@ def get_and_delete_unprocessed_word():
 
 
 def get_earliest_tweet_date():
-    """Return the date of the earliest Tweet stored. If this date has
-    been previously stored, retrieve it from the Settings table.
-    Otherwise, return None.
+    """Returns the date of the earliest Tweet stored. If this date has
+    been previously stored, retrieves it from the Settings table.
+    Otherwise, returns None.
 
     Args:
         None.
@@ -143,8 +143,8 @@ def get_earliest_tweet_date():
 
 
 def get_tweets_on_date(d, date_entry=None):
-    """Return the Tweets tweeted on the date represented by the given
-    date object. Optionally also filter on what number entry the Tweet
+    """Returns the Tweets tweeted on the date represented by the given
+    date object. Optionally also filters on what number entry the Tweet
     was on its date.
 
     Args:
@@ -194,9 +194,9 @@ def get_tweets_on_date(d, date_entry=None):
 
 
 def put_item(table, item):
-    """Store the item represented by the given dictionary in the given
+    """Stores the item represented by the given dictionary in the given
     table after validating that it conforms to the expected schema.
-    Return the response.
+    Returns the response.
 
     Args:
         table: an instance of DynamoDBTable, which contains the table's
@@ -232,7 +232,7 @@ def put_item(table, item):
 
 
 def validate_item_against_schema(schema, item):
-    """Return whether or not the given item has the same format as the
+    """Returns whether or not the given item has the same format as the
     given schema.
 
     Args:
