@@ -12,7 +12,51 @@ class TwitterAPIClient(object):
 
     BASE_URL = "https://api.twitter.com/1.1"
 
-    def __get_oauth_session(self):
+    def __call_api(self, method, url, params={}):
+        """Calls the Twitter API with the given method, URL, and
+        parameters. Returns the response JSON.
+
+        Args:
+            method: An HTTP method as a string (e.g., "GET", "POST")
+            url: The URL to make the request to
+            params: A dictionary of parameters to provide to the request
+
+        Returns:
+            The response in JSON format.
+
+        Raises:
+            TwitterAPIError: If the OAuth session cannot be created, the
+                             Twitter API fails to return a response with
+                             status code 200 OK, or the provided method
+                             is invalid.
+        """
+        session = self.__get_oauth_session()
+        try:
+            try:
+                response = getattr(session, method.lower())(url, params=params)
+            except AttributeError:
+                raise TwitterAPIError(f"Invalid method {method}.")
+            except requests.exceptions.RequestException as e:
+                raise TwitterAPIError(e)
+            json = response.json()
+            if response.status_code != HTTPStatus.OK:
+                message = (
+                    f"Response has unsuccessful status code "
+                    f"{response.status_code}.")
+                if "errors" in json and len(json["errors"]) > 0:
+                    message = message + " Details:"
+                    for error in json["errors"]:
+                        if "message" in error:
+                            message = f"{message}\n- {error['message']}"
+                raise TwitterAPIError(message)
+        except TwitterAPIError as e:
+            session.close()
+            raise e
+        session.close()
+        return json
+
+    @staticmethod
+    def __get_oauth_session():
         """Returns an OAuth session to be used for authorizing requests.
         The session must be closed by the caller.
 
@@ -45,22 +89,10 @@ class TwitterAPIClient(object):
             A Boolean denoting success or failure.
 
         Raises:
-            TwitterAPIError: If the Twitter API fails to return a
-                             response or the response's status code is
-                             not 200 OK.
+            TwitterAPIError: If the request fails.
         """
         url = os.path.join(self.BASE_URL, f"statuses/destroy/{tweet_id}.json")
-        session = self.__get_oauth_session()
-        try:
-            response = session.post(url)
-        except requests.exceptions.RequestException as e:
-            raise TwitterAPIError(
-                f"Failed to delete Tweet with ID {tweet_id}. Details: {e}")
-        if response.status_code != HTTPStatus.OK:
-            raise TwitterAPIError(
-                f"Response has unsuccessful status code "
-                f"{response.status_code}.")
-        session.close()
+        self.__call_api("POST", url)
         return True
 
     def post_tweet(self, content):
@@ -74,24 +106,13 @@ class TwitterAPIClient(object):
             successful, else None.
 
         Raises:
-            TwitterAPIError: If the Twitter API fails to return a
-                             response or the response's status code is
-                             not 200 OK.
+            TwitterAPIError: If the request fails.
         """
         url = os.path.join(self.BASE_URL, "statuses/update.json")
         parameters = {"status": content}
-        session = self.__get_oauth_session()
-        try:
-            response = session.post(url, params=parameters)
-        except requests.exceptions.RequestException as e:
-            raise TwitterAPIError(
-                f"Failed to create Tweet with content {content}. Details: {e}")
-        if response.status_code != HTTPStatus.OK:
-            raise TwitterAPIError(
-                f"Response has unsuccessful status code "
-                f"{response.status_code}.")
-        json = response.json()
-        session.close()
+        json = self.__call_api("POST", url, params=parameters)
+        if "id_str" not in json:
+            raise TwitterAPIError(f"Response does not contain id_str field.")
         return json["id_str"]
 
     def tweet_exists(self, tweet_id):
@@ -104,25 +125,12 @@ class TwitterAPIClient(object):
             A boolean representing whether or not the Tweet exists.
 
         Raises:
-            TwitterAPIError: If the Twitter API fails to return a
-                             response or the response's status code is
-                             not 200 OK.
+            TwitterAPIError: If the request fails.
         """
         url = os.path.join(self.BASE_URL, "statuses/lookup.json")
         parameters = {"id": tweet_id}
-        session = self.__get_oauth_session()
-        try:
-            response = session.get(url, params=parameters)
-        except requests.exceptions.RequestException as e:
-            raise TwitterAPIError(
-                f"Failed to retrieve Tweet with ID {tweet_id}. Details: {e}")
-        if response.status_code != HTTPStatus.OK:
-            raise TwitterAPIError(
-                f"Response has unsuccessful status code "
-                f"{response.status_code}.")
-        json = response.json()
-        session.close()
-        return len(json) == 1 and json[0]["id_str"] == tweet_id
+        json = self.__call_api("GET", url, params=parameters)
+        return len(json) == 1 and json[0].get("id_str", "") == tweet_id
 
 
 class TwitterAPIError(Exception):
