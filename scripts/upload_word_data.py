@@ -1,9 +1,7 @@
 from ..aws_client import AWSClientError
 from ..aws_client import batch_put_items
 from ..constants import DynamoDBTable
-from datetime import datetime
-from datetime import timezone
-from decimal import Decimal
+from ..utils import utc_seconds_since_the_epoch
 import argparse
 import os
 import uuid
@@ -28,7 +26,6 @@ def main():
     if not os.path.exists(input_file) or not os.path.isfile(input_file):
         raise ValueError(f"{input_file} is not an existing file.")
     unprocessed_words = []
-    epoch_start = datetime(1970, 1, 1, tzinfo=timezone.utc)
     with open(input_file) as file:
         for line in file:
             parts = line.split(",")
@@ -41,14 +38,11 @@ def main():
                 print(f"Invalid line: {line}")
                 continue
             random_id = str(uuid.uuid4())
-            now = datetime.now(timezone.utc)
-            insertion_timestamp = Decimal(
-                str((now - epoch_start).total_seconds()))
             unprocessed_word = {
                 "Id": random_id,
                 "Characters": word,
                 "Pinyin": pinyin,
-                "InsertionTimestamp": insertion_timestamp,
+                "InsertionTimestamp": utc_seconds_since_the_epoch(),
             }
             unprocessed_words.append(unprocessed_word)
     try:

@@ -1,12 +1,15 @@
 from datetime import date
+from datetime import datetime
 from datetime import timedelta
+from datetime import timezone
+from decimal import Decimal
 import random
 
 """This module contains utility methods."""
 
 
 def random_dates_in_range(start, end, k):
-    """Return at most k unique random dates between the given start
+    """Returns at most k unique random dates between the given start
     (inclusive) and end (exclusive) dates.
 
     Args:
@@ -35,6 +38,24 @@ def random_dates_in_range(start, end, k):
 
 
 def tweet_url(username, tweet_id):
-    """Return the URL to the Tweet with the given ID by the user with
+    """Returns the URL to the Tweet with the given ID by the user with
     the given username."""
     return f"https://twitter.com/{username}/statuses/{tweet_id}"
+
+
+def utc_seconds_since_the_epoch():
+    """Returns the number of seconds since the beginning of the epoch.
+    UTC time is used.
+
+    Args:
+        None.
+
+    Returns:
+        A Decimal.
+
+    Raises:
+        None.
+    """
+    epoch_start = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    return Decimal(str((now - epoch_start).total_seconds()))
