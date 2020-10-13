@@ -61,7 +61,7 @@ def batch_put_items(table, items):
         with table.batch_writer() as batch:
             for item in items:
                 batch.put_item(Item=item)
-    except boto3.exceptions.ClientError as e:
+    except botocore.exceptions.ClientError as e:
         raise AWSClientError(e.response["Error"])
 
 
@@ -133,7 +133,7 @@ def get_earliest_tweet_date():
                 DynamoDBSettings.EARLIEST_TWEET_DATE)
         }
         response = table.query(**kwargs)
-    except boto3.exceptions.ClientError as e:
+    except botocore.exceptions.ClientError as e:
         raise AWSClientError(e.response["Error"])
     items = response["Items"]
     if items:
@@ -205,7 +205,8 @@ def put_item(table, item):
               which must conform to the expected schema.
 
     Returns:
-        A dictionary response from AWS including an "Attributes" key.
+        A dictionary response from AWS including a "ResponseMetadata"
+        key.
 
     Raises:
         AWSClientError: If the AWS put fails.
