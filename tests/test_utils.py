@@ -27,12 +27,8 @@ class TestRandomDatesInRange(unittest.TestCase):
             (good_start, good_end, bad_k),
         ]
         for arg_set in arg_sets:
-            try:
+            with self.assertRaises(TypeError):
                 random_dates_in_range(arg_set[0], arg_set[1], arg_set[2])
-            except TypeError:
-                pass
-            else:
-                self.fail("A TypeError should have been raised.")
 
     def test_bad_date_order(self):
         """Test that an error is raised if the end date is less than or
@@ -42,12 +38,8 @@ class TestRandomDatesInRange(unittest.TestCase):
             (self.start, self.start, 1),
         ]
         for arg_set in arg_sets:
-            try:
+            with self.assertRaises(ValueError):
                 random_dates_in_range(arg_set[0], arg_set[1], arg_set[2])
-            except ValueError:
-                pass
-            else:
-                self.fail("A ValueError should have been raised.")
 
     def test_non_positive_k(self):
         """Test that an error is raised if the input k is
@@ -57,12 +49,8 @@ class TestRandomDatesInRange(unittest.TestCase):
             (self.start, self.end, 0),
         ]
         for arg_set in arg_sets:
-            try:
+            with self.assertRaises(ValueError):
                 random_dates_in_range(arg_set[0], arg_set[1], arg_set[2])
-            except ValueError:
-                pass
-            else:
-                self.fail("A ValueError should have been raised.")
 
     def test_dates_in_range(self):
         """Test that the generated dates are in the range

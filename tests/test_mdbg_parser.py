@@ -12,13 +12,13 @@ class TestMDBGParser(unittest.TestCase):
     def test_bad_input_type(self):
         """Test that an error is raised if the input has an incorrect
         type."""
-        try:
-            MDBGParser(1, pinyin=None)
-            MDBGParser("", pinyin=[])
-        except TypeError:
-            pass
-        else:
-            self.fail(f"A TypeError should have been raised.")
+        arg_sets = [
+            (1, None),
+            ("", []),
+        ]
+        for arg_set in arg_sets:
+            with self.assertRaises(TypeError):
+                MDBGParser(arg_set[0], arg_set[1])
 
     def test_instantiation(self):
         """Test that the expected variables are set during
