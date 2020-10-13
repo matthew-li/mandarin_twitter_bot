@@ -75,7 +75,7 @@ def main():
         "Id": str(uuid.uuid4()),
         "TweetId": tweet_id_str,
         "Date": today.strftime(DATE_FORMAT),
-        "DateEntry": Decimal(str(date_entry)),
+        "DateEntry": date_entry,
         "Word": mdbg_parser.simplified,
     }
     try:

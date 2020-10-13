@@ -40,7 +40,7 @@ class DynamoDBTable(Enum):
             "Id": str,
             "TweetId": str,
             "Date": str,
-            "DateEntry": Decimal,
+            "DateEntry": int,
             "Word": str,
         })
 
