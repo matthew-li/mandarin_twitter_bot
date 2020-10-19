@@ -13,7 +13,6 @@ from constants import TWEETS_PER_DAY
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
-from decimal import Decimal
 from mdbg_parser import MDBGParser
 from settings import DATE_FORMAT
 from settings import TWITTER_USER_USERNAME
@@ -258,12 +257,12 @@ def get_tweets_on_random_date(date_entry=None, num_tries=5):
 
     Raises:
         AWSClientError: If any AWS query fails.
-        TypeError: Raised by the subroutine for computing random dates.
-        ValueError: Raised by the subroutine for computing random dates.
+        TypeError: Raised by subroutines.
+        ValueError: Raised by subroutines.
     """
     min_date = get_earliest_tweet_date()
     if min_date is None:
-        return None
+        return []
     start = datetime.strptime(min_date, DATE_FORMAT).date()
     end = date.today()
     random_dates = random_dates_in_range(start, end, num_tries)

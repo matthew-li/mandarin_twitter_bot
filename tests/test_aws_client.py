@@ -21,8 +21,9 @@ import warnings
 """A test module for aws_client.py."""
 
 
-class TestAWSClient(unittest.TestCase):
-    """A class for testing the methods of aws_client."""
+class TestDynamoDBMixin(unittest.TestCase):
+    """A class that provides setup and teardown for tests that access
+    and modify AWS DynamoDB."""
 
     def setUp(self):
         # Ignore some warnings about an unclosed socket caused by boto3
@@ -34,6 +35,28 @@ class TestAWSClient(unittest.TestCase):
         for message in messages_to_ignore:
             warnings.filterwarnings(
                 "ignore", category=ResourceWarning, message=message)
+
+        # Store a mapping from table name to a list of keys for created
+        # items so that they can be deleted during teardown.
+        self.created_items = {
+            DynamoDBTable.SETTINGS.value.name: [],
+            DynamoDBTable.TWEETS.value.name: [],
+            DynamoDBTable.UNPROCESSED_WORDS.value.name: [],
+        }
+
+    def tearDown(self):
+        # Delete created items.
+        dynamodb = boto3.resource(
+            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
+        for table_name, keys in self.created_items.items():
+            table = dynamodb.Table(table_name)
+            with table.batch_writer() as batch:
+                for key in keys:
+                    batch.delete_item(key)
+
+
+class TestAWSClient(TestDynamoDBMixin):
+    """A class for testing the methods of aws_client."""
 
     def test_tables_exist(self):
         """Test that the expected tables exist in DynamoDB."""
@@ -173,15 +196,10 @@ class TestAWSClient(unittest.TestCase):
             "Value": "1970-01-01",
         }
         put_item(table, item)
+        self.created_items[table.value.name].append({"Name": item["Name"]})
 
         # The setting is set, so the method should return its value.
         self.assertEqual(get_earliest_tweet_date(), item["Value"])
-
-        # Delete the setting.
-        dynamodb = boto3.resource(
-            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
-        settings = dynamodb.Table(table.value.name)
-        settings.delete_item(Key={"Name": item["Name"]})
 
     def test_get_tweets_on_date_raises_errors(self):
         """Test that the method for retrieving Tweets tweeted on a given
@@ -220,13 +238,19 @@ class TestAWSClient(unittest.TestCase):
         ]
         items = []
         for field_set in field_sets:
-            items.append({
+            item = {
                 "Id": field_set[0],
                 "TweetId": field_set[1],
                 "Date": field_set[2],
                 "DateEntry": field_set[3],
                 "Word": field_set[4],
-            })
+            }
+            items.append(item)
+            key = {
+                "Id": item["Id"],
+                "Date": item["Date"],
+            }
+            self.created_items[table.value.name].append(key)
         batch_put_items(table, items)
 
         # One Tweet was tweeted on January 1st, 1970.
@@ -255,6 +279,9 @@ class TestAWSClient(unittest.TestCase):
         january03 = date(1970, 1, 3)
         tweets = get_tweets_on_date(january03)
         self.assertEqual(len(tweets), 0)
+
+        self.created_items[DynamoDBTable.SETTINGS.value.name].append(
+            {"Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
     def test_put_item_raises_errors(self):
         """Test that the method for putting an item raises the expected
