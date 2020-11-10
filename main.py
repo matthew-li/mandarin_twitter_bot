@@ -99,6 +99,9 @@ def generate_tweet_body(mdbg_parser, previous_tweets):
     """Return the formatted body of a new Tweet, given the current
     and previous entries.
 
+    Twitter counts each Chinese character twice against the Tweet body
+    limit. All URLs are modified to have length TWEET_URL_LENGTH.
+
     Args:
         mdbg_parser: An instance of MDBGParser, which contains the
                      current word, pinyin, and definitions.
@@ -111,15 +114,12 @@ def generate_tweet_body(mdbg_parser, previous_tweets):
 
     Returns:
         A string representing the body of the new Tweet.
-
     Raises:
         Exception, if any errors occur.
     """
     TweetEntry = namedtuple("TweetEntry", "entry char_count")
     tweet_entries = dict()
 
-    # Compute the previous entries.
-    remaining_chars = TWEET_MAX_CHARS
     previous_tweets_and_labels = (
         ("Last Week", previous_tweets.last_week),
         ("Last Month", previous_tweets.last_month),
@@ -135,50 +135,94 @@ def generate_tweet_body(mdbg_parser, previous_tweets):
                       len(tweet["word"]) -
                       len(tweet["url"]) +
                       TWEET_URL_LENGTH)
-        if remaining_chars - char_count <= 0:
-            continue
-        remaining_chars = remaining_chars - char_count
         tweet_entries[label] = TweetEntry(entry=entry, char_count=char_count)
 
-    # Compute the current entry.
-    entry = f"{mdbg_parser.simplified} ({mdbg_parser.pinyin}): "
+    # At minimum, the word and pinyin are required.
+    entry = f"{mdbg_parser.simplified} ({mdbg_parser.pinyin})"
     char_count = len(entry) + len(mdbg_parser.simplified)
-    filtered_definitions = []
-    for _, definition in enumerate(mdbg_parser.definitions):
-        updated_count = char_count + len("; ".join(filtered_definitions))
-        if filtered_definitions:
-            # Account for prepending "; ".
-            updated_count = updated_count + 2
-        if remaining_chars - (updated_count + len(definition)) < 0:
-            continue
-        filtered_definitions.append(definition)
-    if filtered_definitions:
-        addition = "; ".join(filtered_definitions)
-    else:
-        addition = "Not available"
-    entry = entry + addition
-    char_count = char_count + len(addition)
-    entry = entry + "\n"
-    char_count = char_count + 1
+    if char_count > TWEET_MAX_CHARS:
+        raise ValueError(
+            f"Entry {entry} exceeds {TWEET_MAX_CHARS} characters.")
     tweet_entries["Now"] = TweetEntry(entry=entry, char_count=char_count)
-    remaining_chars = remaining_chars - char_count
 
-    # Remove previous entries if the character count has been exceeded.
-    for label in ("Random", "Last Month", "Last Week"):
-        if remaining_chars >= 0:
+    # Add the first definition that does not cause the character count to be
+    # exceeded. If all of them do, include no definition.
+    entry = f"{tweet_entries['Now'].entry}: "
+    char_count = tweet_entries["Now"].char_count + 2
+    definition_index = 0
+    while definition_index < len(mdbg_parser.definitions):
+        definition = mdbg_parser.definitions[definition_index]
+        if char_count + len(definition) <= TWEET_MAX_CHARS:
             break
-        try:
-            tweet_entry = tweet_entries.pop(label)
-        except KeyError:
-            continue
-        remaining_chars = remaining_chars - tweet_entry.char_count
+        definition_index = definition_index + 1
+    if definition_index != len(mdbg_parser.definitions):
+        addition = mdbg_parser.definitions[definition_index]
+        entry = entry + addition
+        char_count = char_count + len(addition)
+    else:
+        entry = entry[:-2]
+        char_count = char_count - 2
+    tweet_entries["Now"] = TweetEntry(entry=entry, char_count=char_count)
 
-    # Construct the Tweet.
-    body = tweet_entries["Now"].entry
-    for label in ("Last Week", "Last Month", "Random"):
+    # Add a newline after the current entry.
+    entry = tweet_entries["Now"].entry
+    char_count = tweet_entries["Now"].char_count
+    if char_count + 1 >= TWEET_MAX_CHARS:
+        return entry
+    else:
+        entry = f"{entry}\n"
+        char_count = char_count + 1
+        tweet_entries["Now"] = TweetEntry(entry=entry, char_count=char_count)
+
+    # Compute the previous entries.
+    previous_tweets_and_labels = (
+        ("Last Week", previous_tweets.last_week),
+        ("Last Month", previous_tweets.last_month),
+        ("Random", previous_tweets.random),
+    )
+    for label, tweet in previous_tweets_and_labels:
+        if not tweet:
+            continue
+        if "word" not in tweet or "url" not in tweet:
+            continue
+        entry = f"\n{label}: {tweet['word']} ({tweet['url']})"
+        char_count = (len(entry) +
+                      len(tweet["word"]) -
+                      len(tweet["url"]) +
+                      TWEET_URL_LENGTH)
+        tweet_entries[label] = TweetEntry(entry=entry, char_count=char_count)
+
+    # Include as many previous entries as possible.
+    included_entries = []
+    now = tweet_entries["Now"]
+    remaining_chars = TWEET_MAX_CHARS - now.char_count
+    included_entries.append(now.entry)
+
+    labels = ["Last Week", "Last Month", "Random"]
+    i = 0
+    while i < len(labels) and remaining_chars >= 0:
+        label = labels[i]
         if label in tweet_entries:
-            body = body + tweet_entries[label].entry
-    return body
+            previous = tweet_entries[label]
+            if remaining_chars - previous.char_count >= 0:
+                included_entries.append(previous.entry)
+                remaining_chars = remaining_chars - previous.char_count
+        i = i + 1
+
+    # Include as many definitions for the current entry as possible.
+    entry = tweet_entries['Now'].entry
+    i = 0
+    while i < len(mdbg_parser.definitions):
+        if i != definition_index:
+            definition = mdbg_parser.definitions[i]
+            addition_char_count = len(definition) + 2
+            if remaining_chars - addition_char_count >= 0:
+                entry = f"{entry[:-1]}; {definition}\n"
+                remaining_chars = remaining_chars - addition_char_count
+        i = i + 1
+    included_entries[0] = entry
+
+    return "".join(included_entries)
 
 
 def get_previous_tweets(date_entry):
@@ -198,6 +242,12 @@ def get_previous_tweets(date_entry):
         "last_week", "last_month", and "random", where each name points
         to a dictionary containing the Tweet's Twitter ID, the word
         associated with the Tweet, and the URL to the Tweet.
+
+    Raises:
+        AWSClientError: If any AWS query fails.
+        TypeError: If one or more inputs has an unexpected type.
+        ValueError: If the Tweet entry falls outside of the expected
+                    range.
     """
     today = date.today()
     tweets_by_date = {
@@ -257,14 +307,17 @@ def get_tweets_on_random_date(date_entry=None, num_tries=5):
 
     Raises:
         AWSClientError: If any AWS query fails.
-        TypeError: Raised by subroutines.
-        ValueError: Raised by subroutines.
+        TypeError: If one or more inputs has an unexpected type.
+        ValueError: If one or more inputs is outside of its expected
+                    range.
     """
     min_date = get_earliest_tweet_date()
     if min_date is None:
         return []
     start = datetime.strptime(min_date, DATE_FORMAT).date()
     end = date.today()
+    if start == end:
+        return []
     random_dates = random_dates_in_range(start, end, num_tries)
     for random_date in random_dates:
         tweets = get_tweets_on_date(random_date, date_entry=date_entry)

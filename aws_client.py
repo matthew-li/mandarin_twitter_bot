@@ -187,6 +187,9 @@ def get_tweets_on_date(d, date_entry=None):
             kwargs["KeyConditionExpression"] &= Key("DateEntry").eq(date_entry)
         response = table.query(**kwargs)
         for item in response["Items"]:
+            # Number types are stored in DynamoDB as Decimals.
+            if isinstance(item["DateEntry"], Decimal):
+                item["DateEntry"] = int(item["DateEntry"])
             tweets.append(item)
     except botocore.exceptions.ClientError as e:
         raise AWSClientError(e.response["Error"])
