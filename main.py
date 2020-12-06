@@ -3,6 +3,7 @@ from aws_client import get_and_delete_unprocessed_word
 from aws_client import get_earliest_tweet_date
 from aws_client import get_tweets_on_date
 from aws_client import put_item
+from aws_client import set_earliest_tweet_date
 from aws_client import validate_item_against_schema
 from collections import namedtuple
 from constants import DynamoDBSettings
@@ -13,12 +14,15 @@ from constants import TWEETS_PER_DAY
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
+from mdbg_parser import MDBGError
 from mdbg_parser import MDBGParser
 from settings import DATE_FORMAT
 from settings import TWITTER_USER_USERNAME
 from twitter_api_client import TwitterAPIClient
 from utils import random_dates_in_range
 from utils import tweet_url
+import sys
+import traceback
 import uuid
 
 """This module contains the methods needed to post a Tweet containing a
@@ -40,23 +44,34 @@ def main():
     today = date.today()
     num_tweets_today = len(get_tweets_on_date(today))
     if num_tweets_today >= TWEETS_PER_DAY:
-        # Log
+        sys.stderr.write(
+            f"The maximum number of Tweets ({TWEETS_PER_DAY}) for today has "
+            f"been exceeded. Exiting.")
         return
     date_entry = num_tweets_today
 
     # Retrieve the next unprocessed word and delete it from the table.
     unprocessed_word = get_and_delete_unprocessed_word()
     if not unprocessed_word:
-        # Log
+        sys.stderr.write("There are no words left to process. Exiting.")
         return
     characters = unprocessed_word["Characters"]
     pinyin = unprocessed_word["Pinyin"]
 
     # Retrieve the word's definition.
     mdbg_parser = MDBGParser(characters, pinyin=pinyin)
-    entry_found = mdbg_parser.run()
+    try:
+        entry_found = mdbg_parser.run()
+    except MDBGError:
+        sys.stderr.write(
+            f"Failed to retrieve a valid response from the dictionary. "
+            f"Exiting. Details:\n")
+        traceback.print_exc(file=sys.stderr)
+        return
     if not entry_found:
-        raise Exception(f"No entry found for {characters}.")
+        sys.stderr.write(
+            f"No dictionary entry was found for {characters}. Exiting.")
+        return
 
     # Retrieve previous Tweets.
     previous_tweets = get_previous_tweets(date_entry)
@@ -67,7 +82,9 @@ def main():
     # Post the Tweet.
     tweet_id_str = TwitterAPIClient().post_tweet(body)
     if tweet_id_str is None:
-        raise Exception(f"Failed to create Tweet with body {body}.")
+        sys.stderr.write(
+            f"Failed to create a Tweet with body '{body.strip()}'. Exiting.")
+        return
 
     # Create an entry in the Tweets table.
     tweet = {
@@ -80,19 +97,27 @@ def main():
     try:
         put_item(DynamoDBTable.TWEETS, tweet)
     except AWSClientError as e:
-        raise e
+        sys.stderr.write(
+            f"Failed to save posted Tweet. Exiting. Details:\n{e}")
+        traceback.print_exc(file=sys.stderr)
+        return
 
     # If no earliest Tweet date has been recorded, store this one.
     if get_earliest_tweet_date() is None:
-        setting = {
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE,
-            "Value": tweet["Date"],
-        }
         try:
-            put_item(DynamoDBTable.SETTINGS, setting)
+            set_earliest_tweet_date(tweet["Date"])
         except AWSClientError as e:
-            # Log a warning, but proceed
-            pass
+            sys.stderr.write(
+                f"Failed to save {DynamoDBSettings.EARLIEST_TWEET_DATE} "
+                f"setting. Exiting. Details:\n{e}")
+            return
+
+    # Output a success message.
+    message = (
+        f"Posted {tweet['Word']} with Tweet ID {tweet['TweetId']} and "
+        f"internal ID {tweet['Id']} as entry {tweet['DateEntry']} on date "
+        f"{tweet['Date']}.")
+    sys.stdout.write(message)
 
 
 def generate_tweet_body(mdbg_parser, previous_tweets):
@@ -222,7 +247,7 @@ def generate_tweet_body(mdbg_parser, previous_tweets):
         i = i + 1
     included_entries[0] = entry
 
-    return "".join(included_entries)
+    return "".join(included_entries).strip()
 
 
 def get_previous_tweets(date_entry):
@@ -264,21 +289,21 @@ def get_previous_tweets(date_entry):
         tweets = tweets_by_date[date_key]
         tweets_by_date[date_key] = dict()
         if not isinstance(tweets, list):
-            # Log
+            # TODO: Log
             continue
         if not tweets:
-            # Log
+            # TODO: Log
             continue
         if len(tweets) > 1:
-            # Log a warning, but proceed
+            # TODO: Log a warning, but proceed
             pass
         tweet = tweets[0]
         if not validate_item_against_schema(table_schema, tweet):
-            # Log
+            # TODO: Log
             continue
         tweet_id = tweet["TweetId"]
         if not twitter_client.tweet_exists(tweet_id):
-            # Log
+            # TODO: Log
             continue
         word = tweet["Word"]
         url = tweet_url(TWITTER_USER_USERNAME, tweet_id)
