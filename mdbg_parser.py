@@ -101,12 +101,17 @@ class MDBGParser(object):
             A boolean denoting whether or not a match was found.
 
         Raises:
-            MDBGError: If the response content format is malformed.
+            MDBGError: If the response status code is invalid or the
+                       response content format is malformed.
         """
         search_results = self.get_search_results(self.simplified)
         soup = BeautifulSoup(search_results, "html.parser")
         table = soup.find("table", {"class": "wordresults"})
+        if table is None:
+            return False
         tbody = table.find("tbody")
+        if tbody is None:
+            return False
 
         simplified_match = False
         for tr in tbody.findAll("tr", {"class": "row"}):
