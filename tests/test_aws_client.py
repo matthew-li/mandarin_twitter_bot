@@ -4,6 +4,7 @@ from aws_client import get_and_delete_unprocessed_word
 from aws_client import get_earliest_tweet_date
 from aws_client import get_tweets_on_date
 from aws_client import put_item
+from aws_client import set_earliest_tweet_date
 from aws_client import validate_item_against_schema
 from constants import AWSResource
 from constants import DynamoDBSettings
@@ -12,6 +13,7 @@ from constants import TWEETS_PER_DAY
 from datetime import date
 from http import HTTPStatus
 from settings import AWS_DYNAMODB_ENDPOINT_URL
+from settings import DATE_FORMAT
 from utils import utc_seconds_since_the_epoch
 import boto3
 import botocore
@@ -43,9 +45,10 @@ class TestDynamoDBMixin(unittest.TestCase):
             DynamoDBTable.TWEETS.value.name: [],
             DynamoDBTable.UNPROCESSED_WORDS.value.name: [],
         }
+        self.addCleanup(self.delete_created_items)
 
-    def tearDown(self):
-        # Delete created items.
+    def delete_created_items(self):
+        """Delete created items from their respective tables."""
         dynamodb = boto3.resource(
             AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
         for table_name, keys in self.created_items.items():
@@ -184,22 +187,19 @@ class TestAWSClient(TestDynamoDBMixin):
         response = unprocessed_words.scan(Limit=1)
         self.assertFalse(response["Items"])
 
-    def test_get_earliest_tweet_date(self):
-        """Test that the method for returning the date of the earliest
-        Tweet returns the expected value."""
+    def test_get_set_earliest_tweet_date(self):
+        """Test that the methods for getting and setting the date of the
+         earliest Tweet behave as expected."""
         # The setting is initially unset, so the method should return None.
         self.assertIsNone(get_earliest_tweet_date())
 
-        table = DynamoDBTable.SETTINGS
-        item = {
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE,
-            "Value": "1970-01-01",
-        }
-        put_item(table, item)
-        self.created_items[table.value.name].append({"Name": item["Name"]})
+        date_str = "1970-01-01"
+        set_earliest_tweet_date(date_str)
+        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
+            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
         # The setting is set, so the method should return its value.
-        self.assertEqual(get_earliest_tweet_date(), item["Value"])
+        self.assertEqual(get_earliest_tweet_date(), date_str)
 
     def test_get_tweets_on_date_raises_errors(self):
         """Test that the method for retrieving Tweets tweeted on a given
@@ -280,8 +280,8 @@ class TestAWSClient(TestDynamoDBMixin):
         tweets = get_tweets_on_date(january03)
         self.assertEqual(len(tweets), 0)
 
-        self.created_items[DynamoDBTable.SETTINGS.value.name].append(
-            {"Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
+        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
+            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
     def test_put_item_raises_errors(self):
         """Test that the method for putting an item raises the expected
@@ -350,6 +350,27 @@ class TestAWSClient(TestDynamoDBMixin):
         # There should be no remaining items in the table.
         item = get_and_delete_unprocessed_word()
         self.assertFalse(item)
+
+    def test_set_earliest_tweet_date_raises_errors(self):
+        """Test that the method for setting the date of the earliest
+        Tweet raises the expected errors."""
+        try:
+            set_earliest_tweet_date(0)
+        except TypeError as e:
+            e = str(e)
+            self.assertEqual("Date 0 is not a string object.", e)
+        else:
+            self.fail("A TypeError should have been raised.")
+        try:
+            date_str = date.today().strftime("%m-%d-%Y")
+            set_earliest_tweet_date(date_str)
+        except ValueError as e:
+            e = str(e)
+            self.assertEqual(
+                f"Date {date_str} does not conform to the expected format "
+                f"{DATE_FORMAT}.", e)
+        else:
+            self.fail("A ValueError should have been raised.")
 
     def test_validate_item_against_schema_raises_errors(self):
         """Test that the method for validating an item against a given

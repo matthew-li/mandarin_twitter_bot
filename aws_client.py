@@ -4,6 +4,7 @@ from constants import DynamoDBSettings
 from constants import DynamoDBTable
 from constants import TWEETS_PER_DAY
 from datetime import date
+from datetime import datetime
 from decimal import Decimal
 from settings import AWS_DYNAMODB_ENDPOINT_URL
 from settings import DATE_FORMAT
@@ -233,6 +234,36 @@ def put_item(table, item):
     except botocore.exceptions.ClientError as e:
         raise AWSClientError(e.response["Error"])
     return response
+
+
+def set_earliest_tweet_date(date_str):
+    """Sets the earliest tweet date in the Settings table.
+
+    Args:
+        date_str: A string conforming to settings.DATE_FORMAT
+
+    Returns:
+        None
+
+    Raises:
+        AWSClientError: If the AWS query fails.
+        TypeError: If one or more inputs has an unexpected type.
+        ValueError: If the date string does not conform to the expected
+                    format.
+    """
+    if not isinstance(date_str, str):
+        raise TypeError(f"Date {date_str} is not a string object.")
+    try:
+        datetime.strptime(date_str, DATE_FORMAT)
+    except ValueError:
+        raise ValueError(
+            f"Date {date_str} does not conform to the expected format "
+            f"{DATE_FORMAT}.")
+    item = {
+        "Name": DynamoDBSettings.EARLIEST_TWEET_DATE,
+        "Value": date_str,
+    }
+    put_item(DynamoDBTable.SETTINGS, item)
 
 
 def validate_item_against_schema(schema, item):
