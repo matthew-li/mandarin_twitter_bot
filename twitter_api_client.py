@@ -95,6 +95,25 @@ class TwitterAPIClient(object):
         self.__call_api("POST", url)
         return True
 
+    def get_recent_tweets(self, screen_name):
+        """Returns recent Tweets tweeted by the user with the given
+        screen name from Twitter.
+
+        Args:
+            screen_name: A string representation of the user's screen
+                         name
+
+        Returns:
+            A JSON containing the user's recent tweets.
+
+        Raises:
+            TwitterAPIError: If the request fails.
+        """
+        url = os.path.join(self.BASE_URL, f"statuses/user_timeline.json")
+        parameters = {"screen_name": screen_name, "tweet_mode": "extended"}
+        json = self.__call_api("GET", url, params=parameters)
+        return json
+
     def post_tweet(self, content):
         """Creates a Tweet on Twitter with the given content.
 
