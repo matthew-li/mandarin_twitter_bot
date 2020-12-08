@@ -46,6 +46,7 @@ class TestDynamoDBMixin(unittest.TestCase):
             DynamoDBTable.UNPROCESSED_WORDS.value.name: [],
         }
         self.addCleanup(self.delete_created_items)
+        self.addCleanup(self.delete_earliest_tweet_date)
 
     def delete_created_items(self):
         """Delete created items from their respective tables."""
@@ -56,6 +57,13 @@ class TestDynamoDBMixin(unittest.TestCase):
             with table.batch_writer() as batch:
                 for key in keys:
                     batch.delete_item(key)
+
+    def delete_earliest_tweet_date(self):
+        """Delete the earliest_tweet_date setting if it is set."""
+        if get_earliest_tweet_date() is not None:
+            table = DynamoDBTable.SETTINGS
+            self.created_items[table.value.name].append({
+                "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
 
 class TestAWSClient(TestDynamoDBMixin):
@@ -195,8 +203,6 @@ class TestAWSClient(TestDynamoDBMixin):
 
         date_str = "1970-01-01"
         set_earliest_tweet_date(date_str)
-        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
         # The setting is set, so the method should return its value.
         self.assertEqual(get_earliest_tweet_date(), date_str)
@@ -279,9 +285,6 @@ class TestAWSClient(TestDynamoDBMixin):
         january03 = date(1970, 1, 3)
         tweets = get_tweets_on_date(january03)
         self.assertEqual(len(tweets), 0)
-
-        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
     def test_put_item_raises_errors(self):
         """Test that the method for putting an item raises the expected

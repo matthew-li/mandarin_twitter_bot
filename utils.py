@@ -29,7 +29,7 @@ def random_dates_in_range(start, end, k):
     if not isinstance(k, int):
         raise TypeError(f"k {k} is not an integer.")
     if end <= start:
-        raise ValueError(f"End {end} must be greater than {start}.")
+        raise ValueError(f"End {end} must be greater than start {start}.")
     if k < 1:
         raise ValueError(f"k {k} is not positive.")
     num_days = (end - start).days

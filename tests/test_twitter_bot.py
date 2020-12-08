@@ -6,8 +6,6 @@ from aws_client import batch_put_items
 from aws_client import put_item
 from aws_client import set_earliest_tweet_date
 from collections import namedtuple
-from constants import AWSResource
-from constants import DynamoDBSettings
 from constants import DynamoDBTable
 from constants import TWEET_MAX_CHARS
 from constants import TWEET_URL_LENGTH
@@ -23,7 +21,6 @@ from main import get_tweets_on_random_date
 from main import main as run_twitter_bot
 from mdbg_parser import MDBGError
 from mdbg_parser import MDBGParser
-from settings import AWS_DYNAMODB_ENDPOINT_URL
 from settings import DATE_FORMAT
 from settings import TWITTER_USER_USERNAME
 from tests.test_aws_client import TestDynamoDBMixin
@@ -32,7 +29,6 @@ from unittest import TestCase
 from unittest.mock import patch
 from utils import tweet_url
 from utils import utc_seconds_since_the_epoch
-import boto3
 import re
 import uuid
 
@@ -45,13 +41,14 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
 
     def setUp(self):
         super().setUp()
+        self.username = TWITTER_USER_USERNAME
         self.twitter_api = TwitterAPIClient()
-        self.created_tweets = set()
         self.addCleanup(self.delete_created_tweets)
 
     def delete_created_tweets(self):
         """Delete created Tweets from Twitter."""
-        for tweet_id in self.created_tweets:
+        for tweet in self.twitter_api.get_recent_tweets(self.username):
+            tweet_id = tweet["id_str"]
             self.twitter_api.delete_tweet(tweet_id)
             self.assertFalse(self.twitter_api.tweet_exists(tweet_id))
 
@@ -295,8 +292,6 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
         created_tweets = self.twitter_api.get_recent_tweets(
             TWITTER_USER_USERNAME)
         self.assertEqual(len(created_tweets), 1)
-        tweet_id_str = created_tweets[0]["id_str"]
-        self.created_tweets.add(tweet_id_str)
 
         # No record of a Tweet should have been created.
         today = date.today()
@@ -305,7 +300,7 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
         # The EARLIEST_TWEET_DATE setting should remain unset.
         self.assertIsNone(get_earliest_tweet_date())
 
-    @patch("main.put_item")
+    @patch("aws_client.put_item")
     def test_aws_setting_put_fails(self, mock_put_item):
         """Test that, if the request to put the setting for the earliest
         Tweet date in DynamoDB fails, the application exits."""
@@ -346,7 +341,6 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
             TWITTER_USER_USERNAME)
         self.assertEqual(len(created_tweets), 1)
         tweet_id_str = created_tweets[0]["id_str"]
-        self.created_tweets.add(tweet_id_str)
 
         # A record of the Tweet should have been created.
         today = date.today()
@@ -374,16 +368,9 @@ class TestTwitterBot(TestDynamoDBMixin):
         super().setUp()
         self.username = TWITTER_USER_USERNAME
         self.twitter_api = TwitterAPIClient()
-        self.created_tweets = set()
         self.previous_tweets = namedtuple(
             "PreviousTweets", "last_week last_month random")
         self.addCleanup(self.delete_created_tweets)
-
-    def delete_created_tweets(self):
-        """Delete created Tweets from Twitter."""
-        for tweet_id in self.created_tweets:
-            self.twitter_api.delete_tweet(tweet_id)
-            self.assertFalse(self.twitter_api.tweet_exists(tweet_id))
 
     def assert_success_message(self, output, dt, date_entry):
         """Assert that the given output is equal to the expected success
@@ -398,25 +385,11 @@ class TestTwitterBot(TestDynamoDBMixin):
             f"{tweet['Date']}.")
         self.assertEqual(output, message)
 
-    def extract_success_details(self, output):
-        """Given a valid success message, extract and return the word,
-        Tweet ID, internal ID, entry number, and date."""
-        pattern = (
-            "Posted (.*) with Tweet ID (.*) and internal ID (.*) as entry "
-            "(.*) on date (.*).")
-        return re.search(pattern, output).groups()
-
-    @patch("main.put_item")
-    def test_first_tweet_sets_earliest_tweet_date_setting(self, mock_put_item):
-        """Test that, if the setting for the earliest Tweet date is
-        unset, it gets set to the date of the Tweet being posted."""
-        today = date.today()
-
+    def create_words(self, words):
+        """Given a list of tuples of the form (character, pinyin),
+        create entries in the UnprocessedWords table."""
         table = DynamoDBTable.UNPROCESSED_WORDS
-        words = [
-            ("再见", "zài jiàn"),
-            ("你好", "nǐ hǎo"),
-        ]
+        items = []
         for word in words:
             item = {
                 "Id": str(uuid.uuid4()),
@@ -424,7 +397,49 @@ class TestTwitterBot(TestDynamoDBMixin):
                 "Pinyin": word[1],
                 "InsertionTimestamp": utc_seconds_since_the_epoch(),
             }
-            put_item(table, item)
+            items.append(item)
+        batch_put_items(table, items)
+
+    def delete_created_tweets(self):
+        """Delete created Tweets from Twitter."""
+        for tweet in self.twitter_api.get_recent_tweets(self.username):
+            tweet_id = tweet["id_str"]
+            self.twitter_api.delete_tweet(tweet_id)
+            self.assertFalse(self.twitter_api.tweet_exists(tweet_id))
+
+    @staticmethod
+    def extract_success_details(output):
+        """Given a valid success message, extract and return the word,
+        Tweet ID, internal ID, entry number, and date."""
+        pattern = (
+            "Posted (.*) with Tweet ID (.*) and internal ID (.*) as entry "
+            "(.*) on date (.*).")
+        return re.search(pattern, output).groups()
+
+    def regenerate_tweet_body(self, characters, pinyin="", last_week={},
+                              last_month={}, random={}):
+        """Given details about the current and previous entries, return
+        the expected Tweet body."""
+        mdbg_parser = MDBGParser(characters, pinyin=pinyin)
+        try:
+            mdbg_parser.run()
+        except MDBGError:
+            self.fail(f"Failed to retrieve dictionary data for comparison.")
+        previous_tweets = self.previous_tweets(
+            last_week=last_week, last_month=last_month, random=random)
+        return generate_tweet_body(mdbg_parser, previous_tweets)
+
+    @patch("main.put_item")
+    def test_first_tweet_sets_earliest_tweet_date_setting(self, mock_put_item):
+        """Test that, if the setting for the earliest Tweet date is
+        unset, it gets set to the date of the Tweet being posted."""
+        today = date.today()
+
+        words = [
+            ("再见", "zài jiàn"),
+            ("你好", "nǐ hǎo"),
+        ]
+        self.create_words(words)
 
         # Patch the method for putting an item in DynamoDB to raise an
         # AWSClientError if the table is the "Settings" table and the
@@ -446,6 +461,11 @@ class TestTwitterBot(TestDynamoDBMixin):
         self.assertFalse(err.getvalue())
         output = out.getvalue()
         self.assert_success_message(output, today, 0)
+        _, tweet_id, internal_id, _, _ = self.extract_success_details(output)
+        self.created_items[DynamoDBTable.TWEETS.value.name].append({
+            "Id": internal_id,
+            "Date": today.strftime(DATE_FORMAT),
+        })
 
         earliest_tweet_date = get_earliest_tweet_date()
         self.assertIsNotNone(earliest_tweet_date)
@@ -456,30 +476,25 @@ class TestTwitterBot(TestDynamoDBMixin):
         with redirect_stdout(out):
             with redirect_stderr(err):
                 run_twitter_bot()
+        _, tweet_id, internal_id, _, _ = \
+            self.extract_success_details(out.getvalue())
+        self.created_items[DynamoDBTable.TWEETS.value.name].append({
+            "Id": internal_id,
+            "Date": today.strftime(DATE_FORMAT),
+        })
 
         # The mocked exception should not have been raised, since its
         # parent code block should not have been entered.
         self.assertFalse(err.getvalue())
         self.assert_success_message(out.getvalue(), today, 1)
 
-        # Two new Tweets should have been created.
-        created_tweets = self.twitter_api.get_recent_tweets(
-            TWITTER_USER_USERNAME)
-        self.assertEqual(len(created_tweets), 2)
-        for created_tweet in created_tweets:
-            self.created_tweets.add(created_tweet["id_str"])
-
     def test_no_previous_tweets_exist(self):
         """Test that, if there are no previous Tweets to include in this
         Tweet, the created Tweet has the expected body."""
-        table = DynamoDBTable.UNPROCESSED_WORDS
-        item = {
-            "Id": str(uuid.uuid4()),
-            "Characters": "再见",
-            "Pinyin": "zài jiàn",
-            "InsertionTimestamp": utc_seconds_since_the_epoch(),
-        }
-        put_item(table, item)
+        words = [
+            ("再见", "zài jiàn"),
+        ]
+        self.create_words(words)
 
         out, err = StringIO(), StringIO()
         with redirect_stdout(out):
@@ -495,18 +510,11 @@ class TestTwitterBot(TestDynamoDBMixin):
         self.assertEqual(len(created_tweets), 1)
         created_tweet = created_tweets[0]
         tweet_id_str = created_tweet["id_str"]
-        self.created_tweets.add(tweet_id_str)
 
         # It should have the expected body.
-        mdbg_parser = MDBGParser(item["Characters"], pinyin=item["Pinyin"])
-        try:
-            mdbg_parser.run()
-        except MDBGError:
-            self.fail(f"Failed to retrieve dictionary data for comparison.")
-        previous_tweets = self.previous_tweets(
-            last_week={}, last_month={}, random={})
-        body = generate_tweet_body(mdbg_parser, previous_tweets)
-        self.assertEqual(created_tweet["full_text"], body)
+        characters, pinyin = words[0]
+        expected_body = self.regenerate_tweet_body(characters, pinyin=pinyin)
+        self.assertEqual(created_tweet["full_text"], expected_body)
 
         # A record of the Tweet should have been created.
         _, _, internal_id, _, _ = self.extract_success_details(output)
@@ -518,7 +526,7 @@ class TestTwitterBot(TestDynamoDBMixin):
         self.assertEqual(tweet["TweetId"], tweet_id_str)
         self.assertEqual(tweet["Date"], str(today))
         self.assertEqual(tweet["DateEntry"], 0)
-        self.assertEqual(tweet["Word"], item["Characters"])
+        self.assertEqual(tweet["Word"], characters)
         table = DynamoDBTable.TWEETS
         self.created_items[table.value.name].append({
             "Id": tweet["Id"],
@@ -533,25 +541,16 @@ class TestTwitterBot(TestDynamoDBMixin):
         days_since_last_month = 30
         days_since_random = 15
         last_week_tweet, last_month_tweet, random_tweet = {}, {}, {}
-        entries = [
+
+        # Upload four words, three of which are previous entries, and one
+        # to be posted today.
+        words = [
             ("影响力", "yǐngxiǎnglì"),
             ("常识", "chángshì"),
             ("同胞", "tóngbāo"),
             ("孩子", "háizi"),
         ]
-
-        # Upload four words, three of which are previous entries, and one
-        # to be posted today.
-        table = DynamoDBTable.UNPROCESSED_WORDS
-        items = []
-        for i, entry in enumerate(entries):
-            items.append({
-                "Id": str(uuid.uuid4()),
-                "Characters": entry[0],
-                "Pinyin": entry[1],
-                "InsertionTimestamp": utc_seconds_since_the_epoch(),
-            })
-        batch_put_items(table, items)
+        self.create_words(words)
 
         # Post three previous Tweets: 30 days ago, a random number of
         # days ago (15), and 7 days ago.
@@ -577,7 +576,6 @@ class TestTwitterBot(TestDynamoDBMixin):
 
             word, tweet_id, internal_id, _, _ = \
                 self.extract_success_details(output)
-            self.created_tweets.add(tweet_id)
             self.created_items[table.value.name].append({
                 "Id": internal_id,
                 "Date": dt.strftime(DATE_FORMAT),
@@ -596,10 +594,6 @@ class TestTwitterBot(TestDynamoDBMixin):
                 random_tweet["tweet_id"] = tweet_id
                 random_tweet["url"] = tweet_url(self.username, tweet_id)
 
-        # The earliest Tweet date should have been set.
-        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
-
         # Post a Tweet today.
         with patch("main.random_dates_in_range") as mock_random_dates:
             # Patch the method for random dates to return the desired date.
@@ -616,22 +610,15 @@ class TestTwitterBot(TestDynamoDBMixin):
 
         word, tweet_id, internal_id, _, _ = \
             self.extract_success_details(output)
-        self.created_tweets.add(tweet_id)
         self.created_items[DynamoDBTable.TWEETS.value.name].append({
             "Id": internal_id,
             "Date": today.strftime(DATE_FORMAT),
         })
 
         # Assert that today's Tweet has the expected body.
-        mdbg_parser = MDBGParser(word)
-        try:
-            mdbg_parser.run()
-        except MDBGError:
-            self.fail(f"Failed to retrieve dictionary data for comparison.")
-        previous_tweets = self.previous_tweets(
-            last_week=last_week_tweet, last_month=last_month_tweet,
+        expected_body = self.regenerate_tweet_body(
+            word, last_week=last_week_tweet, last_month=last_month_tweet,
             random=random_tweet)
-        expected_body = generate_tweet_body(mdbg_parser, previous_tweets)
 
         tweet = self.twitter_api.get_recent_tweets(self.username)[0]
         actual_body = tweet["full_text"]
@@ -650,23 +637,14 @@ class TestTwitterBot(TestDynamoDBMixin):
         days_since_random = 15
         days_since_last_month = 30
         last_month_tweet = {}
-        entries = [
-            ("影响力", "yǐngxiǎnglì"),
-            ("孩子", "háizi"),
-        ]
 
         # Upload two words, one of which is a previous entry, and one to
         # be posted today.
-        table = DynamoDBTable.UNPROCESSED_WORDS
-        items = []
-        for i, entry in enumerate(entries):
-            items.append({
-                "Id": str(uuid.uuid4()),
-                "Characters": entry[0],
-                "Pinyin": entry[1],
-                "InsertionTimestamp": utc_seconds_since_the_epoch(),
-            })
-        batch_put_items(table, items)
+        words = [
+            ("影响力", "yǐngxiǎnglì"),
+            ("孩子", "háizi"),
+        ]
+        self.create_words(words)
 
         # Post one previous Tweet: 30 days ago.
         table = DynamoDBTable.TWEETS
@@ -689,7 +667,6 @@ class TestTwitterBot(TestDynamoDBMixin):
 
         word, tweet_id, internal_id, _, _ = \
             self.extract_success_details(output)
-        self.created_tweets.add(tweet_id)
         self.created_items[table.value.name].append({
             "Id": internal_id,
             "Date": dt.strftime(DATE_FORMAT),
@@ -698,10 +675,6 @@ class TestTwitterBot(TestDynamoDBMixin):
         last_month_tweet["word"] = word
         last_month_tweet["tweet_id"] = tweet_id
         last_month_tweet["url"] = tweet_url(self.username, tweet_id)
-
-        # The earliest Tweet date should have been set.
-        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
         # Post a Tweet today.
         with patch("main.random_dates_in_range") as mock_random_dates:
@@ -719,21 +692,14 @@ class TestTwitterBot(TestDynamoDBMixin):
 
         word, tweet_id, internal_id, _, _ = \
             self.extract_success_details(output)
-        self.created_tweets.add(tweet_id)
         self.created_items[DynamoDBTable.TWEETS.value.name].append({
             "Id": internal_id,
             "Date": today.strftime(DATE_FORMAT),
         })
 
         # Assert that today's Tweet has the expected body.
-        mdbg_parser = MDBGParser(word)
-        try:
-            mdbg_parser.run()
-        except MDBGError:
-            self.fail(f"Failed to retrieve dictionary data for comparison.")
-        previous_tweets = self.previous_tweets(
-            last_week={}, last_month=last_month_tweet, random={})
-        expected_body = generate_tweet_body(mdbg_parser, previous_tweets)
+        expected_body = self.regenerate_tweet_body(
+            word, last_month=last_month_tweet)
 
         tweet = self.twitter_api.get_recent_tweets(self.username)[0]
         actual_body = tweet["full_text"]
@@ -754,7 +720,10 @@ class TestTwitterBot(TestDynamoDBMixin):
         days_since_last_week = 7
         days_since_last_month = 30
         days_since_random = 15
-        entries = [
+
+        # Upload nine words, six of which are previous entries, and
+        # three to be posted today.
+        words = [
             ("影响力", "yǐngxiǎnglì"),
             ("常识", "chángshì"),
             ("同胞", "tóngbāo"),
@@ -765,19 +734,7 @@ class TestTwitterBot(TestDynamoDBMixin):
             ("时间表", "shíjiānbiǎo"),
             ("歌", "gē"),
         ]
-
-        # Upload nine words, six of which are previous entries, and
-        # three to be posted today.
-        table = DynamoDBTable.UNPROCESSED_WORDS
-        items = []
-        for i, entry in enumerate(entries):
-            items.append({
-                "Id": str(uuid.uuid4()),
-                "Characters": entry[0],
-                "Pinyin": entry[1],
-                "InsertionTimestamp": utc_seconds_since_the_epoch(),
-            })
-        batch_put_items(table, items)
+        self.create_words(words)
 
         last_week_tweets, last_month_tweets, random_tweets = [], [], []
 
@@ -810,7 +767,6 @@ class TestTwitterBot(TestDynamoDBMixin):
 
                 word, tweet_id, internal_id, _, _ = \
                     self.extract_success_details(output)
-                self.created_tweets.add(tweet_id)
                 self.created_items[table.value.name].append({
                     "Id": internal_id,
                     "Date": dt.strftime(DATE_FORMAT),
@@ -827,10 +783,6 @@ class TestTwitterBot(TestDynamoDBMixin):
                     last_month_tweets.append(tweet)
                 elif num_days == days_since_random:
                     random_tweets.append(tweet)
-
-        # The earliest Tweet date should have been set.
-        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
 
         # Post three Tweets today.
         for date_entry in range(3):
@@ -849,7 +801,6 @@ class TestTwitterBot(TestDynamoDBMixin):
 
             word, tweet_id, internal_id, _, _ = \
                 self.extract_success_details(output)
-            self.created_tweets.add(tweet_id)
             self.created_items[DynamoDBTable.TWEETS.value.name].append({
                 "Id": internal_id,
                 "Date": today.strftime(DATE_FORMAT),
@@ -869,16 +820,9 @@ class TestTwitterBot(TestDynamoDBMixin):
                 else {})
 
             # Assert that today's Tweet has the expected body.
-            mdbg_parser = MDBGParser(word)
-            try:
-                mdbg_parser.run()
-            except MDBGError:
-                self.fail(
-                    f"Failed to retrieve dictionary data for comparison.")
-            previous_tweets = self.previous_tweets(
-                last_week=last_week_tweet, last_month=last_month_tweet,
+            expected_body = self.regenerate_tweet_body(
+                word, last_week=last_week_tweet, last_month=last_month_tweet,
                 random=random_tweet)
-            expected_body = generate_tweet_body(mdbg_parser, previous_tweets)
 
             tweet = self.twitter_api.get_recent_tweets(self.username)[0]
             actual_body = tweet["full_text"]
@@ -1157,8 +1101,16 @@ class TestTwitterBotUtils(TestDynamoDBMixin):
 
     def setUp(self):
         super().setUp()
+        self.username = TWITTER_USER_USERNAME
         self.twitter_api = TwitterAPIClient()
-        self.created_tweets = set()
+        self.addCleanup(self.delete_created_tweets)
+
+    def delete_created_tweets(self):
+        """Delete created Tweets from Twitter."""
+        for tweet in self.twitter_api.get_recent_tweets(self.username):
+            tweet_id = tweet["id_str"]
+            self.twitter_api.delete_tweet(tweet_id)
+            self.assertFalse(self.twitter_api.tweet_exists(tweet_id))
 
     def test_get_previous_tweets_raises_errors(self):
         """Test that the method for retrieving previous Tweets raises
@@ -1198,7 +1150,6 @@ class TestTwitterBotUtils(TestDynamoDBMixin):
         dynamodb_id = str(uuid.uuid4())
         tweet_id = self.twitter_api.post_tweet(f"Test tweet {dynamodb_id}")
         self.assertTrue(self.twitter_api.tweet_exists(tweet_id))
-        self.created_tweets.add(tweet_id)
 
         last_week_expected = {
             "Id": dynamodb_id,
@@ -1220,7 +1171,6 @@ class TestTwitterBotUtils(TestDynamoDBMixin):
         dynamodb_id = str(uuid.uuid4())
         tweet_id = self.twitter_api.post_tweet(f"Test tweet {dynamodb_id}")
         self.assertTrue(self.twitter_api.tweet_exists(tweet_id))
-        self.created_tweets.add(tweet_id)
 
         last_month_expected = {
             "Id": dynamodb_id,
@@ -1244,7 +1194,6 @@ class TestTwitterBotUtils(TestDynamoDBMixin):
         dynamodb_id = str(uuid.uuid4())
         tweet_id = self.twitter_api.post_tweet(f"Test tweet {dynamodb_id}")
         self.assertTrue(self.twitter_api.tweet_exists(tweet_id))
-        self.created_tweets.add(tweet_id)
 
         random_expected = {
             "Id": dynamodb_id,
@@ -1289,11 +1238,6 @@ class TestTwitterBotUtils(TestDynamoDBMixin):
         self.assertFalse(previous_tweets.last_month)
         previous_tweets = get_previous_tweets(1)
         self.assertTrue(previous_tweets.last_month)
-
-        # Delete created Tweets from Twitter.
-        for tweet_id in self.created_tweets:
-            self.twitter_api.delete_tweet(tweet_id)
-            self.assertFalse(self.twitter_api.tweet_exists(tweet_id))
 
     def test_get_tweets_on_random_date_raises_errors(self):
         """Test that the method for retrieving the Tweets tweeted on a
@@ -1375,17 +1319,3 @@ class TestTwitterBotUtils(TestDynamoDBMixin):
         tweets = get_tweets_on_random_date(date_entry=None)
         self.assertEqual(len(tweets), 1)
         self.assertIn(tweets[0]["Id"], set([str(i) for i in range(5)]))
-
-        dynamodb = boto3.resource(
-            AWSResource.DYNAMO_DB, endpoint_url=AWS_DYNAMODB_ENDPOINT_URL)
-        table = dynamodb.Table(DynamoDBTable.TWEETS.value.name)
-        with table.batch_writer() as batch:
-            for item in items:
-                key = {
-                    "Id": item["Id"],
-                    "Date": item["Date"],
-                }
-                batch.delete_item(Key=key)
-
-        self.created_items[DynamoDBTable.SETTINGS.value.name].append({
-            "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
