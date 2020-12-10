@@ -18,6 +18,7 @@ from utils import utc_seconds_since_the_epoch
 import boto3
 import botocore
 import unittest
+import uuid
 import warnings
 
 """A test module for aws_client.py."""
@@ -48,6 +49,22 @@ class TestDynamoDBMixin(unittest.TestCase):
         self.addCleanup(self.delete_created_items)
         self.addCleanup(self.delete_earliest_tweet_date)
 
+    @staticmethod
+    def create_words(words):
+        """Given a list of tuples of the form (character, pinyin),
+        create entries in the UnprocessedWords table."""
+        table = DynamoDBTable.UNPROCESSED_WORDS
+        items = []
+        for word in words:
+            item = {
+                "Id": str(uuid.uuid4()),
+                "Characters": word[0],
+                "Pinyin": word[1],
+                "InsertionTimestamp": utc_seconds_since_the_epoch(),
+            }
+            items.append(item)
+        batch_put_items(table, items)
+
     def delete_created_items(self):
         """Delete created items from their respective tables."""
         dynamodb = boto3.resource(
@@ -64,6 +81,16 @@ class TestDynamoDBMixin(unittest.TestCase):
             table = DynamoDBTable.SETTINGS
             self.created_items[table.value.name].append({
                 "Name": DynamoDBSettings.EARLIEST_TWEET_DATE})
+
+    def record_created_tweet(self, id_value, date_value):
+        """Given the internal ID (string) and date (string) of a Tweet
+        entry in DynamoDB, add the item to self.created_items for
+        deletion."""
+        table = DynamoDBTable.TWEETS
+        self.created_items[table.value.name].append({
+            "Id": id_value,
+            "Date": date_value
+        })
 
 
 class TestAWSClient(TestDynamoDBMixin):

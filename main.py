@@ -289,21 +289,16 @@ def get_previous_tweets(date_entry):
         tweets = tweets_by_date[date_key]
         tweets_by_date[date_key] = dict()
         if not isinstance(tweets, list):
-            # TODO: Log
             continue
         if not tweets:
-            # TODO: Log
             continue
         if len(tweets) > 1:
-            # TODO: Log a warning, but proceed
             pass
         tweet = tweets[0]
         if not validate_item_against_schema(table_schema, tweet):
-            # TODO: Log
             continue
         tweet_id = tweet["TweetId"]
         if not twitter_client.tweet_exists(tweet_id):
-            # TODO: Log
             continue
         word = tweet["Word"]
         url = tweet_url(TWITTER_USER_USERNAME, tweet_id)
