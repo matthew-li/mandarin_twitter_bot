@@ -1,1 +1,3 @@
-config.conf
+*config.conf
+__pycache__
+*.log
