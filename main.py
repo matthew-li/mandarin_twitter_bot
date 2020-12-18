@@ -11,6 +11,7 @@ from constants import DynamoDBTable
 from constants import TWEET_MAX_CHARS
 from constants import TWEET_URL_LENGTH
 from constants import TWEETS_PER_DAY
+from constants import TwitterBotExitCodes
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
@@ -47,14 +48,14 @@ def main():
         sys.stderr.write(
             f"The maximum number of Tweets ({TWEETS_PER_DAY}) for today has "
             f"been exceeded. Exiting.")
-        return
+        sys.exit(TwitterBotExitCodes.MAX_TWEETS_EXCEEDED)
     date_entry = num_tweets_today
 
     # Retrieve the next unprocessed word and delete it from the table.
     unprocessed_word = get_and_delete_unprocessed_word()
     if not unprocessed_word:
         sys.stderr.write("There are no words left to process. Exiting.")
-        return
+        sys.exit(TwitterBotExitCodes.NO_WORDS_LEFT)
     characters = unprocessed_word["Characters"]
     pinyin = unprocessed_word["Pinyin"]
 
@@ -67,11 +68,11 @@ def main():
             f"Failed to retrieve a valid response from the dictionary. "
             f"Exiting. Details:\n")
         traceback.print_exc(file=sys.stderr)
-        return
+        sys.exit(TwitterBotExitCodes.BAD_DICTIONARY_RESPONSE)
     if not entry_found:
         sys.stderr.write(
             f"No dictionary entry was found for {characters}. Exiting.")
-        return
+        sys.exit(TwitterBotExitCodes.NO_DICTIONARY_ENTRY)
 
     # Retrieve previous Tweets.
     previous_tweets = get_previous_tweets(date_entry)
@@ -84,7 +85,7 @@ def main():
     if tweet_id_str is None:
         sys.stderr.write(
             f"Failed to create a Tweet with body '{body.strip()}'. Exiting.")
-        return
+        sys.exit(TwitterBotExitCodes.TWEET_FAILED)
 
     # Create an entry in the Tweets table.
     tweet = {
@@ -100,7 +101,7 @@ def main():
         sys.stderr.write(
             f"Failed to save posted Tweet. Exiting. Details:\n{e}")
         traceback.print_exc(file=sys.stderr)
-        return
+        sys.exit(TwitterBotExitCodes.DB_FAILED)
 
     # If no earliest Tweet date has been recorded, store this one.
     if get_earliest_tweet_date() is None:
@@ -110,7 +111,7 @@ def main():
             sys.stderr.write(
                 f"Failed to save {DynamoDBSettings.EARLIEST_TWEET_DATE} "
                 f"setting. Exiting. Details:\n{e}")
-            return
+            sys.exit(TwitterBotExitCodes.DB_FAILED)
 
     # Output a success message.
     message = (
@@ -118,6 +119,8 @@ def main():
         f"internal ID {tweet['Id']} as entry {tweet['DateEntry']} on date "
         f"{tweet['Date']}.")
     sys.stdout.write(message)
+
+    sys.exit(TwitterBotExitCodes.OK)
 
 
 def generate_tweet_body(mdbg_parser, previous_tweets):

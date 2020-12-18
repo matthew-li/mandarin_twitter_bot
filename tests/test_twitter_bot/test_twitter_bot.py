@@ -4,6 +4,7 @@ from aws_client import get_tweets_on_date
 from aws_client import put_item
 from collections import namedtuple
 from constants import DynamoDBTable
+from constants import TwitterBotExitCodes
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
 from datetime import date
@@ -78,7 +79,9 @@ class TestTwitterBot(TestDynamoDBMixin):
         out, err = StringIO(), StringIO()
         with redirect_stdout(out):
             with redirect_stderr(err):
-                run_twitter_bot()
+                with self.assertRaises(SystemExit) as cm:
+                    run_twitter_bot()
+                self.assertEqual(cm.exception.code, TwitterBotExitCodes.OK)
         self.assertFalse(err.getvalue())
         output = out.getvalue()
         self.assert_success_message(output, dt, date_entry)

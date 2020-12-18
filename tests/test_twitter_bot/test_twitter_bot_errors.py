@@ -5,6 +5,7 @@ from aws_client import get_tweets_on_date
 from aws_client import put_item
 from constants import DynamoDBTable
 from constants import TWEETS_PER_DAY
+from constants import TwitterBotExitCodes
 from contextlib import redirect_stderr
 from datetime import date
 from io import StringIO
@@ -33,6 +34,16 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
         self.twitter_api = TwitterAPIClient()
         self.addCleanup(delete_created_tweets)
 
+    def run_twitter_bot_with_errors(self, exit_code):
+        """Run the Twitter bot, expecting an error and the given exit
+        code. Return the error message."""
+        err = StringIO()
+        with redirect_stderr(err):
+            with self.assertRaises(SystemExit) as cm:
+                run_twitter_bot()
+            self.assertEqual(cm.exception.code, exit_code)
+        return err.getvalue()
+
     def test_too_many_tweets_today(self):
         """Test that, if the maximum number of Tweets have already been
         posted today, the application exits."""
@@ -55,14 +66,13 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
             put_item(table, tweet)
             self.record_created_tweet(tweet["Id"], tweet["Date"])
 
-        err = StringIO()
-        with redirect_stderr(err):
-            run_twitter_bot()
+        exit_code = TwitterBotExitCodes.MAX_TWEETS_EXCEEDED
+        error = self.run_twitter_bot_with_errors(exit_code)
 
         message = (
             "The maximum number of Tweets (3) for today has been exceeded. "
             "Exiting.")
-        self.assertEqual(err.getvalue(), message)
+        self.assertEqual(error, message)
 
         # The UnprocessedWord should not have been processed; it should still
         # be in the table.
@@ -84,12 +94,11 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
     def test_no_unprocessed_words_left(self):
         """Test that, if there are no words left to process, the
         application exits."""
-        err = StringIO()
-        with redirect_stderr(err):
-            run_twitter_bot()
+        exit_code = TwitterBotExitCodes.NO_WORDS_LEFT
+        error = self.run_twitter_bot_with_errors(exit_code)
 
         message = "There are no words left to process. Exiting."
-        self.assertEqual(err.getvalue(), message)
+        self.assertEqual(error, message)
 
         # There should be no UnprocessedWords in the table.
         unprocessed_word = get_and_delete_unprocessed_word()
@@ -121,18 +130,17 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
             raise MDBGError("This exception is expected.")
         mock_run.side_effect = raise_mdbg_error
 
-        err = StringIO()
-        with redirect_stderr(err):
-            run_twitter_bot()
+        exit_code = TwitterBotExitCodes.BAD_DICTIONARY_RESPONSE
+        error = self.run_twitter_bot_with_errors(exit_code)
+
         mock_run.assert_called()
 
-        output = err.getvalue()
         message = (
             "Failed to retrieve a valid response from the dictionary. "
             "Exiting. Details:\n")
-        self.assertTrue(output.startswith(message))
-        self.assertIn("Traceback", output)
-        self.assertIn("This exception is expected.", output)
+        self.assertTrue(error.startswith(message))
+        self.assertIn("Traceback", error)
+        self.assertIn("This exception is expected.", error)
 
         # There should be no UnprocessedWords in the table.
         unprocessed_word = get_and_delete_unprocessed_word()
@@ -157,13 +165,12 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
         ]
         self.create_words(words)
 
-        err = StringIO()
-        with redirect_stderr(err):
-            run_twitter_bot()
+        exit_code = TwitterBotExitCodes.NO_DICTIONARY_ENTRY
+        error = self.run_twitter_bot_with_errors(exit_code)
 
         message = (
             f"No dictionary entry was found for {words[0][1]}. Exiting.")
-        self.assertEqual(err.getvalue(), message)
+        self.assertEqual(error, message)
 
         # There should be no UnprocessedWords in the table.
         unprocessed_word = get_and_delete_unprocessed_word()
@@ -192,15 +199,14 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
         # Patch the method for posting a Tweet to return None.
         mock_post_tweet.return_value = None
 
-        err = StringIO()
-        with redirect_stderr(err):
-            run_twitter_bot()
+        exit_code = TwitterBotExitCodes.TWEET_FAILED
+        error = self.run_twitter_bot_with_errors(exit_code)
+
         mock_post_tweet.assert_called()
 
-        output = err.getvalue()
         message = "Failed to create a Tweet with body '再见"
-        self.assertTrue(output.startswith(message))
-        self.assertTrue(output.endswith("'. Exiting."))
+        self.assertTrue(error.startswith(message))
+        self.assertTrue(error.endswith("'. Exiting."))
 
         # There should be no UnprocessedWords in the table.
         unprocessed_word = get_and_delete_unprocessed_word()
@@ -232,15 +238,14 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
             raise AWSClientError("This exception is expected.")
         mock_put_item.side_effect = raise_aws_client_error
 
-        err = StringIO()
-        with redirect_stderr(err):
-            run_twitter_bot()
+        exit_code = TwitterBotExitCodes.DB_FAILED
+        error = self.run_twitter_bot_with_errors(exit_code)
+
         mock_put_item.assert_called()
 
-        output = err.getvalue()
         message = "Failed to save posted Tweet. Exiting. Details:\n"
-        self.assertTrue(output.startswith(message))
-        self.assertIn("This exception is expected.", output)
+        self.assertTrue(error.startswith(message))
+        self.assertIn("This exception is expected.", error)
 
         # There should be no UnprocessedWords in the table.
         unprocessed_word = get_and_delete_unprocessed_word()
@@ -275,16 +280,15 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
             return put_item(table, item)
         mock_put_item.side_effect = raise_aws_client_error_conditionally
 
-        err = StringIO()
-        with redirect_stderr(err):
-            run_twitter_bot()
+        exit_code = TwitterBotExitCodes.DB_FAILED
+        error = self.run_twitter_bot_with_errors(exit_code)
+
         mock_put_item.assert_called()
 
-        output = err.getvalue()
         message = (
             "Failed to save earliest_tweet_date setting. Exiting. Details:\n")
-        self.assertTrue(output.startswith(message))
-        self.assertIn("This exception is expected.", output)
+        self.assertTrue(error.startswith(message))
+        self.assertIn("This exception is expected.", error)
 
         # There should be no UnprocessedWords in the table.
         unprocessed_word = get_and_delete_unprocessed_word()
