@@ -54,6 +54,19 @@ class DynamoDBTable(Enum):
         })
 
 
+class TwitterBotExitCodes(Enum):
+    """Exit codes for the possible outcomes of the main method."""
+
+    OK = 0
+    UNHANDLED = 1
+    MAX_TWEETS_EXCEEDED = 2
+    NO_WORDS_LEFT = 3
+    BAD_DICTIONARY_RESPONSE = 4
+    NO_DICTIONARY_ENTRY = 5
+    TWEET_FAILED = 6
+    DB_FAILED = 7
+
+
 # The maximum number of characters allowed in a Tweet.
 TWEET_MAX_CHARS = 280
 # The length to which URLs are modified during Tweet creation.
