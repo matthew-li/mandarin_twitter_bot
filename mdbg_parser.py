@@ -1,14 +1,10 @@
 from bs4 import BeautifulSoup
 from http import HTTPStatus
-import logging
 import requests
 
 """This module contains methods that retrieve and parse information
 about Chinese characters from the MDBG Chinese Dictionary:
 https://www.mdbg.net/chinese/dictionary."""
-
-
-logging.basicConfig(filename="mdbg.log", level=logging.INFO)
 
 
 class MDBGParser(object):
@@ -132,11 +128,6 @@ class MDBGParser(object):
                     pinyin = ""
                     for span in div.select("span[class*='mpt']"):
                         pinyin = pinyin + span.text.strip()
-                    if self.pinyin:
-                        if pinyin != self.pinyin:
-                            logging.info(
-                                f"Pinyin updated from {self.pinyin} to "
-                                f"{pinyin}.")
                     self.pinyin = pinyin
                 elif div_class == "defs":
                     self.definitions = [x.strip() for x in div.text.split("/")]
