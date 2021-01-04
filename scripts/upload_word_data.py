@@ -1,7 +1,7 @@
-from ..aws_client import AWSClientError
-from ..aws_client import batch_put_items
-from ..constants import DynamoDBTable
-from ..utils import utc_seconds_since_the_epoch
+from aws_client import AWSClientError
+from aws_client import batch_put_items
+from constants import DynamoDBTable
+from utils import utc_seconds_since_the_epoch
 import argparse
 import os
 import uuid
