@@ -1,20 +1,20 @@
-from aws_client import AWSClientError
-from aws_client import batch_put_items
-from aws_client import get_and_delete_unprocessed_word
-from aws_client import get_earliest_tweet_date
-from aws_client import get_tweets_on_date
-from aws_client import put_item
-from aws_client import set_earliest_tweet_date
-from aws_client import validate_item_against_schema
-from constants import AWSResource
-from constants import DynamoDBSettings
-from constants import DynamoDBTable
-from constants import TWEETS_PER_DAY
 from datetime import date
 from http import HTTPStatus
-from settings import AWS_DYNAMODB_ENDPOINT_URL
-from settings import DATE_FORMAT
-from utils import utc_seconds_since_the_epoch
+from mandarin_twitter_bot.aws_client import AWSClientError
+from mandarin_twitter_bot.aws_client import batch_put_items
+from mandarin_twitter_bot.aws_client import get_and_delete_unprocessed_word
+from mandarin_twitter_bot.aws_client import get_earliest_tweet_date
+from mandarin_twitter_bot.aws_client import get_tweets_on_date
+from mandarin_twitter_bot.aws_client import put_item
+from mandarin_twitter_bot.aws_client import set_earliest_tweet_date
+from mandarin_twitter_bot.aws_client import validate_item_against_schema
+from mandarin_twitter_bot.constants import AWSResource
+from mandarin_twitter_bot.constants import DynamoDBSettings
+from mandarin_twitter_bot.constants import DynamoDBTable
+from mandarin_twitter_bot.constants import TWEETS_PER_DAY
+from mandarin_twitter_bot.settings import AWS_DYNAMODB_ENDPOINT_URL
+from mandarin_twitter_bot.settings import DATE_FORMAT
+from mandarin_twitter_bot.utils import utc_seconds_since_the_epoch
 import boto3
 import botocore
 import unittest

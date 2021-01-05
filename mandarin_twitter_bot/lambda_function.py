@@ -1,5 +1,5 @@
-from constants import TwitterBotExitCodes
-from main import main as run_twitter_bot
+from mandarin_twitter_bot.constants import TwitterBotExitCodes
+from mandarin_twitter_bot.main import main as run_twitter_bot
 import json
 import sys
 import traceback

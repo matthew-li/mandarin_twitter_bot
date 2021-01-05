@@ -1,5 +1,5 @@
-from settings import TWITTER_USER_USERNAME
-from twitter_api_client import TwitterAPIClient
+from mandarin_twitter_bot.settings import TWITTER_USER_USERNAME
+from mandarin_twitter_bot.twitter_api_client import TwitterAPIClient
 
 
 def delete_created_tweets():

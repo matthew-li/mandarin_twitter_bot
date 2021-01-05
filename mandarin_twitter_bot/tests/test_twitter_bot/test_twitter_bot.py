@@ -1,25 +1,25 @@
-from aws_client import AWSClientError
-from aws_client import get_earliest_tweet_date
-from aws_client import get_tweets_on_date
-from aws_client import put_item
 from collections import namedtuple
-from constants import DynamoDBTable
-from constants import TwitterBotExitCodes
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
 from datetime import date
 from datetime import timedelta
 from io import StringIO
-from main import generate_tweet_body
-from main import main as run_twitter_bot
-from mdbg_parser import MDBGError
-from mdbg_parser import MDBGParser
-from settings import TWITTER_USER_USERNAME
-from tests.test_aws_client import TestDynamoDBMixin
-from tests.test_twitter_bot.utils import delete_created_tweets
-from twitter_api_client import TwitterAPIClient
+from mandarin_twitter_bot.aws_client import AWSClientError
+from mandarin_twitter_bot.aws_client import get_earliest_tweet_date
+from mandarin_twitter_bot.aws_client import get_tweets_on_date
+from mandarin_twitter_bot.aws_client import put_item
+from mandarin_twitter_bot.constants import DynamoDBTable
+from mandarin_twitter_bot.constants import TwitterBotExitCodes
+from mandarin_twitter_bot.main import generate_tweet_body
+from mandarin_twitter_bot.main import main as run_twitter_bot
+from mandarin_twitter_bot.mdbg_parser import MDBGError
+from mandarin_twitter_bot.mdbg_parser import MDBGParser
+from mandarin_twitter_bot.settings import TWITTER_USER_USERNAME
+from mandarin_twitter_bot.tests.test_aws_client import TestDynamoDBMixin
+from mandarin_twitter_bot.tests.test_twitter_bot.utils import delete_created_tweets
+from mandarin_twitter_bot.twitter_api_client import TwitterAPIClient
+from mandarin_twitter_bot.utils import tweet_url
 from unittest.mock import patch
-from utils import tweet_url
 import re
 
 """A test module for testing that the main application behaves as
