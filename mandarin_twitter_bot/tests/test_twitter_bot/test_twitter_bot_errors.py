@@ -223,7 +223,7 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
         # The EARLIEST_TWEET_DATE setting should remain unset.
         self.assertIsNone(get_earliest_tweet_date())
 
-    @patch("main.put_item")
+    @patch("mandarin_twitter_bot.main.put_item")
     def test_aws_tweet_put_fails(self, mock_put_item):
         """Test that, if the request to put the Tweet in DynamoDB fails,
         the application exits."""
@@ -263,7 +263,7 @@ class TestTwitterBotErrors(TestDynamoDBMixin):
         # The EARLIEST_TWEET_DATE setting should remain unset.
         self.assertIsNone(get_earliest_tweet_date())
 
-    @patch("aws_client.put_item")
+    @patch("mandarin_twitter_bot.aws_client.put_item")
     def test_aws_setting_put_fails(self, mock_put_item):
         """Test that, if the request to put the setting for the earliest
         Tweet date in DynamoDB fails, the application exits."""

@@ -36,7 +36,7 @@ class TestTwitterBotUtils(TestDynamoDBMixin):
         with self.assertRaises(ValueError):
             get_previous_tweets(-1)
 
-    @patch("main.random_dates_in_range")
+    @patch("mandarin_twitter_bot.main.random_dates_in_range")
     def test_get_previous_tweets_output(self, mock_method):
         """Test that the method for retrieving previous Tweets returns
         the expected output."""
