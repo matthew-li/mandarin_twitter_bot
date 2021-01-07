@@ -1,8 +1,8 @@
 from http import HTTPStatus
+from mandarin_twitter_bot import settings
 from requests_oauthlib import OAuth1Session
 import os
 import requests
-import settings
 
 """This module contains methods that act as a thin layer over the
 Twitter REST API."""

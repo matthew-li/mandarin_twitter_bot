@@ -1,13 +1,13 @@
 from boto3.dynamodb.conditions import Key
-from constants import AWSResource
-from constants import DynamoDBSettings
-from constants import DynamoDBTable
-from constants import TWEETS_PER_DAY
 from datetime import date
 from datetime import datetime
 from decimal import Decimal
-from settings import AWS_DYNAMODB_ENDPOINT_URL
-from settings import DATE_FORMAT
+from mandarin_twitter_bot.constants import AWSResource
+from mandarin_twitter_bot.constants import DynamoDBSettings
+from mandarin_twitter_bot.constants import DynamoDBTable
+from mandarin_twitter_bot.constants import TWEETS_PER_DAY
+from mandarin_twitter_bot.settings import AWS_DYNAMODB_ENDPOINT_URL
+from mandarin_twitter_bot.settings import DATE_FORMAT
 import boto3
 import botocore
 

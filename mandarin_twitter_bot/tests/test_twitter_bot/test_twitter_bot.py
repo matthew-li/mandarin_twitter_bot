@@ -1,25 +1,25 @@
-from aws_client import AWSClientError
-from aws_client import get_earliest_tweet_date
-from aws_client import get_tweets_on_date
-from aws_client import put_item
 from collections import namedtuple
-from constants import DynamoDBTable
-from constants import TwitterBotExitCodes
 from contextlib import redirect_stderr
 from contextlib import redirect_stdout
 from datetime import date
 from datetime import timedelta
 from io import StringIO
-from main import generate_tweet_body
-from main import main as run_twitter_bot
-from mdbg_parser import MDBGError
-from mdbg_parser import MDBGParser
-from settings import TWITTER_USER_USERNAME
-from tests.test_aws_client import TestDynamoDBMixin
-from tests.test_twitter_bot.utils import delete_created_tweets
-from twitter_api_client import TwitterAPIClient
+from mandarin_twitter_bot.aws_client import AWSClientError
+from mandarin_twitter_bot.aws_client import get_earliest_tweet_date
+from mandarin_twitter_bot.aws_client import get_tweets_on_date
+from mandarin_twitter_bot.aws_client import put_item
+from mandarin_twitter_bot.constants import DynamoDBTable
+from mandarin_twitter_bot.constants import TwitterBotExitCodes
+from mandarin_twitter_bot.main import generate_tweet_body
+from mandarin_twitter_bot.main import main as run_twitter_bot
+from mandarin_twitter_bot.mdbg_parser import MDBGError
+from mandarin_twitter_bot.mdbg_parser import MDBGParser
+from mandarin_twitter_bot.settings import TWITTER_USER_USERNAME
+from mandarin_twitter_bot.tests.test_aws_client import TestDynamoDBMixin
+from mandarin_twitter_bot.tests.test_twitter_bot.utils import delete_created_tweets
+from mandarin_twitter_bot.twitter_api_client import TwitterAPIClient
+from mandarin_twitter_bot.utils import tweet_url
 from unittest.mock import patch
-from utils import tweet_url
 import re
 
 """A test module for testing that the main application behaves as
@@ -90,7 +90,7 @@ class TestTwitterBot(TestDynamoDBMixin):
         self.record_created_tweet(internal_id, dt)
         return word, tweet_id, internal_id, entry_number, dt
 
-    @patch("main.put_item")
+    @patch("mandarin_twitter_bot.main.put_item")
     def test_first_tweet_sets_earliest_tweet_date_setting(self, mock_put_item):
         """Test that, if the setting for the earliest Tweet date is
         unset, it gets set to the date of the Tweet being posted."""
@@ -187,7 +187,7 @@ class TestTwitterBot(TestDynamoDBMixin):
             # Patch the method for today's date to return a past date.
             # Source: https://stackoverflow.com/a/25652721
             dt = today - timedelta(days=num_days)
-            with patch("main.date") as mock_date:
+            with patch("mandarin_twitter_bot.main.date") as mock_date:
                 mock_date.today.return_value = dt
                 mock_date.side_effect = lambda *args, **kwargs: date(
                     *args, **kwargs)
@@ -209,7 +209,7 @@ class TestTwitterBot(TestDynamoDBMixin):
                 random_tweet["url"] = tweet_url(self.username, tweet_id)
 
         # Post a Tweet today.
-        with patch("main.random_dates_in_range") as mock_random_dates:
+        with patch("mandarin_twitter_bot.main.random_dates_in_range") as mock_random_dates:
             # Patch the method for random dates to return the desired date.
             random_dt = today - timedelta(days=days_since_random)
             mock_random_dates.return_value = [random_dt]
@@ -251,7 +251,7 @@ class TestTwitterBot(TestDynamoDBMixin):
         # Patch the method for today's date to return a past date.
         # Source: https://stackoverflow.com/a/25652721
         dt = today - timedelta(days=days_since_last_month)
-        with patch("main.date") as mock_date:
+        with patch("mandarin_twitter_bot.main.date") as mock_date:
             mock_date.today.return_value = dt
             mock_date.side_effect = lambda *args, **kwargs: date(
                 *args, **kwargs)
@@ -264,7 +264,7 @@ class TestTwitterBot(TestDynamoDBMixin):
         last_month_tweet["url"] = tweet_url(self.username, tweet_id)
 
         # Post a Tweet today.
-        with patch("main.random_dates_in_range") as mock_random_dates:
+        with patch("mandarin_twitter_bot.main.random_dates_in_range") as mock_random_dates:
             # Patch the method for random dates to return the desired date.
             random_dt = today - timedelta(days=days_since_random)
             mock_random_dates.return_value = [random_dt]
@@ -324,7 +324,7 @@ class TestTwitterBot(TestDynamoDBMixin):
                 # Patch the method for today's date to return a past date.
                 # Source: https://stackoverflow.com/a/25652721
                 dt = today - timedelta(days=num_days)
-                with patch("main.date") as mock_date:
+                with patch("mandarin_twitter_bot.main.date") as mock_date:
                     mock_date.today.return_value = dt
                     mock_date.side_effect = lambda *args, **kwargs: date(
                         *args, **kwargs)
@@ -346,7 +346,7 @@ class TestTwitterBot(TestDynamoDBMixin):
 
         # Post three Tweets today.
         for date_entry in range(3):
-            with patch("main.random_dates_in_range") as mock_random_dates:
+            with patch("mandarin_twitter_bot.main.random_dates_in_range") as mock_random_dates:
                 # Patch the method for random dates to return the desired date.
                 random_dt = today - timedelta(days=days_since_random)
                 mock_random_dates.return_value = [random_dt]

@@ -1,8 +1,8 @@
 from collections import namedtuple
-from constants import TWEET_MAX_CHARS
-from constants import TWEET_URL_LENGTH
-from main import generate_tweet_body
-from mdbg_parser import MDBGParser
+from mandarin_twitter_bot.constants import TWEET_MAX_CHARS
+from mandarin_twitter_bot.constants import TWEET_URL_LENGTH
+from mandarin_twitter_bot.main import generate_tweet_body
+from mandarin_twitter_bot.mdbg_parser import MDBGParser
 from unittest import TestCase
 
 """A test module for testing that the method for generating the body of

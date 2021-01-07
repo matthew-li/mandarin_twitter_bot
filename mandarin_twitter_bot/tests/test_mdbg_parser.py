@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from bs4 import element
-from mdbg_parser import MDBGParser
+from mandarin_twitter_bot.mdbg_parser import MDBGParser
 import unittest
 
 """A test module for mdbg_parser.py."""

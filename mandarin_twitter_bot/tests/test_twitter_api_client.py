@@ -1,7 +1,7 @@
-from constants import TWEET_MAX_CHARS
-from settings import TWITTER_USER_USERNAME
-from twitter_api_client import TwitterAPIClient
-from twitter_api_client import TwitterAPIError
+from mandarin_twitter_bot.constants import TWEET_MAX_CHARS
+from mandarin_twitter_bot.settings import TWITTER_USER_USERNAME
+from mandarin_twitter_bot.twitter_api_client import TwitterAPIClient
+from mandarin_twitter_bot.twitter_api_client import TwitterAPIError
 import unittest
 
 """A test module for twitter_api_client.py."""

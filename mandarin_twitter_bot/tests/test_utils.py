@@ -1,7 +1,7 @@
 from datetime import date
 from datetime import datetime
-from settings import DATE_FORMAT
-from utils import random_dates_in_range
+from mandarin_twitter_bot.settings import DATE_FORMAT
+from mandarin_twitter_bot.utils import random_dates_in_range
 import unittest
 
 """A test module for utils.py."""

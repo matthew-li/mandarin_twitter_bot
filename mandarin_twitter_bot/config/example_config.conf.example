@@ -1,0 +1,10 @@
+[aws]
+endpoint_url =
+
+[twitter]
+twitter_access_token =
+twitter_access_token_secret =
+twitter_bearer_token =
+twitter_consumer_key =
+twitter_consumer_secret =
+twitter_user_username =

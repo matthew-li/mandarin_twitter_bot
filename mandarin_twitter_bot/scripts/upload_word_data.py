@@ -1,7 +1,7 @@
-from aws_client import AWSClientError
-from aws_client import batch_put_items
-from constants import DynamoDBTable
-from utils import utc_seconds_since_the_epoch
+from mandarin_twitter_bot.aws_client import AWSClientError
+from mandarin_twitter_bot.aws_client import batch_put_items
+from mandarin_twitter_bot.constants import DynamoDBTable
+from mandarin_twitter_bot.utils import utc_seconds_since_the_epoch
 import argparse
 import os
 import uuid
