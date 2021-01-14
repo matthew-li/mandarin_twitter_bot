@@ -4,8 +4,13 @@ import json
 import sys
 import traceback
 
+"""This module is invoked by AWS Lambda and, in turn, invokes the
+bot."""
+
 
 def lambda_handler(event, context):
+    """Make at most three attempts to run the bot. Only retry on
+    specific exit codes."""
     max_tries = 3
     num_tries = 0
     ok_exit_code = TwitterBotExitCodes.OK
