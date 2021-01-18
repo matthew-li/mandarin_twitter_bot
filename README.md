@@ -1,6 +1,6 @@
 # Mandarin Twitter Bot
 
-A Twitter bot that tweets Mandarin vocabulary, with links to previous Tweets for reinforcement.
+A Twitter bot [@mandarin_daily](https://twitter.com/mandarin_daily) that tweets Mandarin vocabulary, with links to previous Tweets for reinforcement.
 
 ## Overview
 
