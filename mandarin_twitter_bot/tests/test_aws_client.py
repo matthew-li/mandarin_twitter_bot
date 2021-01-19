@@ -165,9 +165,6 @@ class TestAWSClient(TestDynamoDBMixin):
 
         batch_put_items(table, items)
 
-        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
-        unprocessed_words = dynamodb.Table(table.value.name)
-        self.assertEqual(unprocessed_words.item_count, len(items))
         found_items = []
         for i in range(len(items)):
             found_items.append(get_and_delete_unprocessed_word())
@@ -366,9 +363,6 @@ class TestAWSClient(TestDynamoDBMixin):
             self.assertEqual(
                 response["ResponseMetadata"]["HTTPStatusCode"], HTTPStatus.OK)
 
-        dynamodb = boto3.resource(AWSResource.DYNAMO_DB)
-        unprocessed_words = dynamodb.Table(table.value.name)
-        self.assertEqual(unprocessed_words.item_count, len(items))
         found_items = []
         for i in range(len(items)):
             found_items.append(get_and_delete_unprocessed_word())
