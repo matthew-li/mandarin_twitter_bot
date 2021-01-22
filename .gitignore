@@ -1,3 +1,4 @@
 *config.conf
+!environment_config.conf
 __pycache__
 *.log
