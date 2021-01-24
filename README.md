@@ -1,5 +1,8 @@
 # Mandarin Twitter Bot
 
+[![Twitter](https://img.shields.io/twitter/follow/mandarin_daily.svg?style=social)](https://twitter.com/mandarin_daily)
+![CircleCI](https://circleci.com/gh/matthew-li/mandarin_twitter_bot/tree/master.svg?style=shield)
+
 A Twitter bot [@mandarin_daily](https://twitter.com/mandarin_daily) that tweets Mandarin vocabulary, with links to previous Tweets for reinforcement.
 
 ## Overview
