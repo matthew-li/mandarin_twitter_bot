@@ -1,0 +1,55 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@1.3.2
+  python: circleci/python@1.2
+
+workflows:
+  commit:
+    jobs:
+      - test
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - test
+
+jobs:
+  test:
+    docker:
+      - image: cimg/python:3.8
+        environment:
+          TWITTER_BOT_SETTINGS_MODULE: mandarin_twitter_bot/config/environment_config.conf
+      - image: amazon/dynamodb-local:latest
+        command: "-jar DynamoDBLocal.jar -sharedDb -inMemory -port 8001"
+    steps:
+      - checkout
+      - python/install-packages:
+          pkg-manager: pip
+      - run:
+          name: Set up environment variables
+          command: |
+            echo "export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $BASH_ENV
+            echo "export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $BASH_ENV
+            echo "export AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION" >> $BASH_ENV
+            echo "export ENDPOINT_URL_VAR=$ENDPOINT_URL" >> $BASH_ENV
+            echo "export TWITTER_ACCESS_TOKEN_VAR=$TWITTER_ACCESS_TOKEN" >> $BASH_ENV
+            echo "export TWITTER_ACCESS_TOKEN_SECRET_VAR=$TWITTER_ACCESS_TOKEN_SECRET" >> $BASH_ENV
+            echo "export TWITTER_BEARER_TOKEN_VAR=$TWITTER_BEARER_TOKEN" >> $BASH_ENV
+            echo "export TWITTER_CONSUMER_KEY_VAR=$TWITTER_CONSUMER_KEY" >> $BASH_ENV
+            echo "export TWITTER_CONSUMER_SECRET_VAR=$TWITTER_CONSUMER_SECRET" >> $BASH_ENV
+            echo "export TWITTER_USER_USERNAME_VAR=$TWITTER_USER_USERNAME" >> $BASH_ENV
+            source $BASH_ENV
+      - aws-cli/install
+      - aws-cli/setup
+      - run:
+          name: Create DynamoDB tables
+          command: sh deploy/create_tables.sh $ENDPOINT_URL
+      - run:
+          name: Run tests
+          command: python -m unittest discover mandarin_twitter_bot.tests

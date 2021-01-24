@@ -9,7 +9,7 @@ DATE_FORMAT = "%Y-%m-%d"
 
 # Read configuration from a file.
 CONFIG_FILE = os.environ["TWITTER_BOT_SETTINGS_MODULE"].strip()
-config = configparser.SafeConfigParser()
+config = configparser.ConfigParser(os.environ)
 config.read(CONFIG_FILE)
 
 # AWS-specific settings.
