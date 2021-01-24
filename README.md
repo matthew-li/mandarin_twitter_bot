@@ -97,7 +97,7 @@ export TWITTER_BOT_SETTINGS_MODULE="mandarin_twitter_bot/config/staging_config.c
 docker-compose up -f mandarin_twitter_bot/docker-compose.yml
 ```
 
-3. Create DynamoDB tables.
+3. Create DynamoDB tables. Note that this requires that the [AWS CLI](https://aws.amazon.com/cli/) is installed.
 
 ```
 sh mandarin_twitter_bot/deploy/create_tables.sh http://localhost:8000
