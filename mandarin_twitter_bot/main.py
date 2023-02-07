@@ -301,8 +301,10 @@ def get_previous_tweets(date_entry):
         if not validate_item_against_schema(table_schema, tweet):
             continue
         tweet_id = tweet["TweetId"]
-        if not twitter_client.tweet_exists(tweet_id):
-            continue
+        # Note: The Twitter API no longer allows read calls for free. Assume
+        # that the tweet exists.
+        # if not twitter_client.tweet_exists(tweet_id):
+        #     continue
         word = tweet["Word"]
         url = tweet_url(TWITTER_USER_USERNAME, tweet_id)
         tweets_by_date[date_key] = dict(tweet_id=tweet_id, word=word, url=url)
